@@ -1,9 +1,9 @@
-//import { sqlite3Worker1Promiser } from '@sqlite.org/sqlite-wasm';
+import { sqlite3Worker1Promiser } from '@sqlite.org/sqlite-wasm';
 import { SYNQLITE_BATCH_SIZE, SYNQLITE_PREFIX } from './constants.js';
 import { Change, SynQLiteOptions, SyncableTable } from './types.js';
 // import pino from 'pino';
 
-declare var sqlite3Worker1Promiser: any; 
+//declare var sqlite3Worker1Promiser: any; 
 
 console.log({ sqlite3Worker1Promiser });
 
@@ -52,7 +52,7 @@ class SynQLite {
               res(_promiser);
             },
             onerror: (err: any) => {
-              console.error('@ERROR', err)
+              console.error('@ERROR', err);
             },
             debug: (...args: any) => {
               console.debug(...args);
@@ -144,7 +144,7 @@ class SynQLite {
           sql, // I think we can make this sexier, in Minmail
           bind: values,
           callback: (result: any) => {
-            if (!result.row) return resolve(results as T);
+            if (!result.row) return resolve(results as any);
             const o: any = {};
             result.row.forEach((col: string, i: number) => o[result.columnNames[i]] = result.row[i]);
             results.push(o);
