@@ -10,6 +10,7 @@ declare class SynQLite {
     private _synqPrefix?;
     private _synqTables?;
     private _synqBatchSize;
+    private _wal;
     utils: {
         strtimeAsISO8601: string;
         nowAsISO8601: string;
@@ -23,6 +24,7 @@ declare class SynQLite {
     get synqPrefix(): string | undefined;
     get synqTables(): SyncableTable[] | undefined;
     get synqBatchSize(): number;
+    get wal(): boolean;
     runQuery<T>({ sql, values }: {
         sql: string;
         values?: any[];
@@ -35,5 +37,5 @@ declare class SynQLite {
     applyChange({ change, savepoint }: ApplyChangeParams): Promise<void>;
     applyChangesToLocalDB(changes: Change[]): Promise<void>;
 }
-export declare const setupDatabase: ({ filename, sqlite3, prefix, tables, batchSize, }: SynQLiteOptions) => Promise<SynQLite>;
+export declare const setupDatabase: ({ filename, sqlite3, prefix, tables, batchSize, wal }: SynQLiteOptions) => Promise<SynQLite>;
 export default setupDatabase;

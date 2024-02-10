@@ -9,6 +9,7 @@ export type SynQLiteOptionsBase = {
   prefix: string;
   tables: SyncableTable[];
   batchSize?: number;
+  wal?: boolean;
 }
 
 export type SynQLiteOptions = SynQLiteOptionsBase & (

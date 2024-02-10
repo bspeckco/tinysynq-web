@@ -19,6 +19,7 @@ class SynQLite {
   private _synqPrefix?: string;
   private _synqTables?: SyncableTable[];
   private _synqBatchSize: number = 20;
+  private _wal = false;
 
   utils = {
     strtimeAsISO8601,
@@ -130,6 +131,10 @@ class SynQLite {
 
   get synqBatchSize() {
     return this._synqBatchSize;
+  }
+
+  get wal() {
+    return this._wal;
   }
 
   async runQuery<T>({sql, values}: {sql: string, values?: any[]}): Promise<T> {
@@ -282,6 +287,7 @@ export const setupDatabase = async ({
   prefix = SYNQLITE_PREFIX,
   tables,
   batchSize = SYNQLITE_BATCH_SIZE,
+  wal = false
 }: SynQLiteOptions) => {
   /*
   @TODO:
@@ -294,7 +300,8 @@ export const setupDatabase = async ({
     sqlite3,
     prefix,
     tables,
-    batchSize
+    batchSize,
+    wal
   });
   console.log('@SynQLite db', db)
   
@@ -313,6 +320,13 @@ export const setupDatabase = async ({
   // Add a 'last_modified' column to each table you want to sync, if not already present.
   // Example for a table named 'items':
   // db.exec('ALTER TABLE items ADD COLUMN last_modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL');
+
+  // Set WAL mode if necessary
+  if (wal === true) {
+    await db.runQuery({
+      sql: `PRAGMA journal_mode=WAL;`
+    });
+  }
 
   // Create a change-tracking table
   await db.runQuery({
