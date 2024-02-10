@@ -3,8 +3,6 @@ import { SYNQLITE_BATCH_SIZE, SYNQLITE_PREFIX } from './constants.js';
 import { Change, SynQLiteOptions, SyncableTable } from './types.js';
 // import pino from 'pino';
 
-//declare var sqlite3Worker1Promiser: any; 
-
 console.log({ sqlite3Worker1Promiser });
 
 type ApplyChangeParams = {
@@ -46,7 +44,7 @@ class SynQLite {
     return new Promise(async (resolve, reject) => {
       try {
         console.debug('get promiser...')
-        const promiser: any = await new Promise(async (res) => {
+        const promiser: any = await new Promise((res) => {
           const _promiser = sqlite3Worker1Promiser({
             onready: () => {
               res(_promiser);
@@ -347,12 +345,18 @@ export const setupDatabase = async ({
 
   for (const table of tables) {
     console.debug('Setting up', table.name, table.id);
-    const jsonObject = await db.runQuery<any>({
+    const jsonObject = (await db.runQuery<any>({
       sql:`
       SELECT 'json_object(' || GROUP_CONCAT('''' || name || ''', NEW.' || name, ',') || ')' AS jo
       FROM pragma_table_info('${table.name}');`
-    });
-    console.log(jsonObject, jsonObject.jo)
+    }))[0];
+    console.log(jsonObject, jsonObject.jo);
+
+    // Ensure triggers are up to date
+    db.runQuery({sql: `DROP TRIGGER IF EXISTS ${prefix}_after_insert_${table.name}`});
+    db.runQuery({sql: `DROP TRIGGER IF EXISTS ${prefix}_after_update_${table.name}`});
+    db.runQuery({sql: `DROP TRIGGER IF EXISTS ${prefix}_after_delete_${table.name}`});
+
     const sql = `
       CREATE TRIGGER IF NOT EXISTS ${prefix}_after_insert_${table.name}
       AFTER INSERT ON ${table.name}
