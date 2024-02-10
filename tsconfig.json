@@ -2,13 +2,13 @@
   "compilerOptions": {
     "lib": ["ESNext"],
     "target": "ESNext",
-    "module": "Node16",
+    "module": "ESNext",
     "moduleDetection": "force",
     "allowJs": true,
     "allowSyntheticDefaultImports": true,
 
     /* Bundler mode */
-    "moduleResolution": "Node16",
+    "moduleResolution": "NodeNext",
     "noEmit": true,
 
     /* Linting */
