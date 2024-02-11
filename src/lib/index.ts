@@ -35,7 +35,7 @@ class SynQLite {
     this._synqPrefix = initData.prefix;
     this._synqTables = initData.tables;
     this._synqBatchSize = initData.batchSize || this._synqBatchSize;
-    // @TODO: take code from sqlite-example-app to initialise DB
+    this._wal = initData.wal ?? false;
   }
 
   async init() {
