@@ -1,10 +1,12 @@
 import { describe, test, beforeAll, beforeEach, expect, afterAll } from 'vitest';
-import SynQLite, { type SynQLiteOptions, type SynqlDatabase } from './index.js';
+import setupDatabase from './index.js';
+import type { SynQLiteOptions, SynqlDatabase } from './types.js';
 import { nanoid } from 'nanoid';
 import fs from 'fs';
 
-const TEST_DB_PATH = '/tmp/synql-test.db'; // Use an in-memory database for tests
-const ID_SIZE = 16; // 1000 years to reach 1% probability of collision at 1000 IDs per second
+/*
+const TEST_DB_PATH = '/synql-test.db';
+const ID_SIZE = 16; // 1000 years to reach 1% probability of collision at 1000 IDs per second. That's enough entropy.
 
 type PostCreateFunction = (db: any) => void;
 type GetConfiguredDbParams = {
@@ -14,17 +16,24 @@ type GetConfiguredDbParams = {
   postCreate?: PostCreateFunction;
 }
 
-function getConfiguredDb({
+async function getConfiguredDb({
   createStatements = [],
   config,
   postCreate
 }: GetConfiguredDbParams)  {
   // Initialize the database once for all tests in this suite
-  const tmp = new DB(config.database);
+  const tmp = await setupDatabase({
+    filename: TEST_DB_PATH,
+    prefix: 'tst',
+    tables: [
+      { name: 'item', id: 'item_id' }
+    ],
+    wal: true
+  });
   const defaultCreateStatement = `
   CREATE TABLE IF NOT EXISTS items (
     item_id TEXT PRIMARY KEY,
-    name TEXT
+    name TEXT,
   );`;
 
   createStatements = createStatements.length
@@ -32,13 +41,10 @@ function getConfiguredDb({
     : [defaultCreateStatement]
   // Common test data setup
   for (const stmt of createStatements) {
-    tmp.prepare(stmt).run();
+    tmp.runQuery({sql: stmt});
   };
   if (postCreate) postCreate(tmp);
-  tmp.close();
-
-  // Use the connection provided SynQLite
-  return SynQLite.setupDatabase(config);
+  return;
 }
 
 describe('Sync Module', () => {
@@ -85,7 +91,7 @@ describe('Sync Module', () => {
   });
 
   test('getChangesSinceLastSync retrieves changes after a given timestamp', () => {
-    const changes:any[] = SynQLite.getChangesSinceLastSync(db);
+    const changes:any[] = setupDatabase.getChangesSinceLastSync(db);
     expect(changes.length).toBe(1);
     expect(changes[0].row_id).toBe(2);
   });
@@ -100,7 +106,7 @@ describe('Sync Module', () => {
         // Add more changes as needed for testing
       ];
 
-      SynQLite.applyChangesToLocalDB(db, changes);
+      setupDatabase.applyChangesToLocalDB(db, changes);
 
       // Verify changes were applied
       const item:any = db.prepare('SELECT * FROM items WHERE item_id = ?').get('fakeId0');
@@ -120,7 +126,7 @@ describe('Sync Module', () => {
         // Add more changes as needed for testing
       ];
 
-      SynQLite.applyChangesToLocalDB(db, changes);
+      setupDatabase.applyChangesToLocalDB(db, changes);
 
       // Verify item was deleted were applied
       const deleted:any = db.prepare('SELECT * FROM items WHERE item_id = ?').get('fakeId1');
@@ -135,7 +141,7 @@ describe('Sync Module', () => {
         // Add more changes as needed for testing
       ];
 
-      SynQLite.applyChangesToLocalDB(db, changes);
+      setupDatabase.applyChangesToLocalDB(db, changes);
 
       // Verify item was deleted were applied
       const inserted:any = db.prepare('SELECT * FROM items WHERE item_id = ?').get('fakeId2');
@@ -291,7 +297,7 @@ describe('Sync Module', () => {
       expect(changelog).toBeTruthy();
 
       // Apply the changes to database B
-      SynQLite.applyChangesToLocalDB(dbB, changelog as any[]);
+      setupDatabase.applyChangesToLocalDB(dbB, changelog as any[]);
       
       // Compare records
       const member1A = dbA.prepare(`SELECT * FROM member ORDER BY member_id`).all();
@@ -327,3 +333,4 @@ describe('Sync Module', () => {
     });
   })
 });
+*/

@@ -1,9 +1,5 @@
 import { Change, SynQLiteOptions, SyncableTable } from './types.js';
-type ApplyChangeParams = {
-    change: Change;
-    savepoint: string;
-};
-declare class SynQLite {
+export declare class SynQLite {
     private _db;
     private _dbName;
     private _synqDbId?;
@@ -11,6 +7,7 @@ declare class SynQLite {
     private _synqTables?;
     private _synqBatchSize;
     private _wal;
+    private log;
     utils: {
         strtimeAsISO8601: string;
         nowAsISO8601: string;
@@ -30,12 +27,20 @@ declare class SynQLite {
         values?: any[];
     }): Promise<T>;
     getLastSync(): Promise<any>;
-    getChangesSinceLastSync(db: any, lastSync?: string): Promise<Change[]>;
+    getChangesSinceLastSync({ db, lastSync }: {
+        db: any;
+        lastSync?: string;
+    }): Promise<Change[]>;
+    private enableTriggers;
+    private disableTriggers;
     private beginTransaction;
     private commitTransaction;
     private rollbackTransaction;
-    applyChange({ change, savepoint }: ApplyChangeParams): Promise<void>;
+    private applyChange;
     applyChangesToLocalDB(changes: Change[]): Promise<void>;
+    setupTriggersForTable({ table }: {
+        table: SyncableTable;
+    }): Promise<void>;
 }
-export declare const setupDatabase: ({ filename, sqlite3, prefix, tables, batchSize, wal }: SynQLiteOptions) => Promise<SynQLite>;
+export declare const setupDatabase: ({ filename, sqlite3, prefix, tables, batchSize, wal, preInit, postInit, logOptions }: SynQLiteOptions) => Promise<SynQLite | null>;
 export default setupDatabase;

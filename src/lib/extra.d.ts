@@ -2,7 +2,7 @@ declare module 'SynQLiteWeb' {
   import { SynQLiteInterface } from './types.ts';
   // import { setupDatabase } from './index.js';
   // export const setupDatabase = setupDatabase;
-  export default SynQLiteInterface;
+  // export default SynQLiteInterface;
 }
 
 // TODO remove this once `@sqlite.org/sqlite-wasm` has types

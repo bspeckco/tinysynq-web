@@ -1,20 +1,25 @@
+import { ISettingsParam, ILogObj } from 'tslog';
 export type SyncableTable = {
     name: string;
     id: string;
 };
 export type SynQLiteOptionsBase = {
-    sqlite3?: any;
+    sqlite3?: SQLiteWASM;
     filename?: string;
     prefix: string;
     tables: SyncableTable[];
     batchSize?: number;
     wal?: boolean;
+    preInit?: string[];
+    postInit?: string[];
+    logOptions?: ISettingsParam<ILogObj>;
 };
 export type SynQLiteOptions = SynQLiteOptionsBase & ({
     sqlite3: any;
 } | {
     filename: string;
 });
+export type SQLiteWASM = any;
 export type Database = {};
 export type SynqlDatabase = Database & {
     synqPrefix?: string;
@@ -27,16 +32,47 @@ export type SynqlDatabase = Database & {
     [key: string]: any;
 };
 export interface SynQLiteInterface {
+    db: SQLiteWASM;
+    dbName: string;
     synqDbId?: string;
     synqPrefix?: string;
     synqTables?: SyncableTable[];
     synqBatchSize: number;
+    wal: boolean;
     utils: {
         utcNowAsISO8601: () => string;
         strtimeAsISO8601: string;
     };
-    getLastSync: (db: any) => Promise<string>;
+    init(): Promise<SynQLiteInterface>;
+    runQuery<T>(queryData: {
+        sql: string;
+        values?: any[];
+    }): Promise<T>;
+    getLastSync: Promise<MetaRowData>;
+    getChangesSinceLastSync(data: {
+        db: SQLiteWASM;
+        lastSync?: string;
+    }): Promise<Change[]>;
+    beginTransaction(): Promise<string>;
+    commitTransaction({ savepoint }: {
+        savepoint: string;
+    }): Promise<any>;
+    rollbackTransaction({ savepoint }: {
+        savepoint: string;
+    }): Promise<any>;
+    applyChangesToLocalDB(changes: Change[]): Promise<any>;
+    setupTriggersForTable(data: {
+        table: SyncableTable;
+    }): Promise<any>;
 }
+export type ApplyChangeParams = {
+    change: Change;
+    savepoint: string;
+};
+export type MetaRowData = {
+    meta_name: string;
+    meta_value: string;
+};
 export type Change = {
     id: number;
     table_name: string;
@@ -45,3 +81,12 @@ export type Change = {
     data: string;
     modified_at: string;
 };
+export declare enum LogLevel {
+    Silly = 0,
+    Trace = 1,
+    Debug = 2,
+    Info = 3,
+    Warn = 4,
+    Error = 5,
+    Fatal = 6
+}
