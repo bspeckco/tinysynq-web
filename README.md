@@ -14,9 +14,14 @@ pnpm run watch
 
 ## Test
 
-You must run the `build:test` script before running the tests in order to ensure sqlite-wasm is available during tests.
+All tests are under the `./tests` directory, along with a tiny index.html that is served and used as the target for the tests.
 
-Unfortunately, there's no configuration for separating this from the main build, so it must be undone after testing (currently in an `afterall` hook).
+Run `npm test` or `npm run test:build`. The latter builds the library before running the tests. There are two possible builds:
+- `build:prod`: calls `microbundle`
+- `build:full`: calls `microbundle --external none`
+
+The latter is necessary to bundle the `@sqlite.org/sqlite-wasm` package into the library. This ensures that sqlite-wasm is available during tests and allows the DB to load properly.
+
 
 ## Build
 

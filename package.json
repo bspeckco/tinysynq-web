@@ -14,7 +14,7 @@
   "module": "./dist/synqlite.module.js",
   "unpkg": "./dist/synqlite.umd.js",
   "scripts": {
-    "build": "microbundle && rm -f dist/full-build",
+    "build:prod": "microbundle && rm -f dist/full-build",
     "build:full": "touch dist/full-build && microbundle --external none",
     "watch": "microbundle watch",
     "test-server": "cd tests/browser && http-server --cors -p 8181",
