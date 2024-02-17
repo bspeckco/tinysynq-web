@@ -54,9 +54,10 @@ test.describe('SynQLite', () => {
 
     }, [preInit, LogLevel]);
 
-    await page.close();
-
     log.debug({res});
     expect(res).toBeTruthy();
+
+    await page.close();
+    await browser.close();
   })
 });

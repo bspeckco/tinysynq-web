@@ -182,3 +182,6 @@ out
 tests/browser/dist
 tests/browser/sqlite3*
 tests/browser/synqlite.module.js
+
+# Exclude status file
+dist/full-build

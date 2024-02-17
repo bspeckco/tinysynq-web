@@ -14,13 +14,15 @@
   "module": "./dist/synqlite.module.js",
   "unpkg": "./dist/synqlite.umd.js",
   "scripts": {
-    "build": "microbundle",
-    "build:full": "microbundle --external none",
+    "build": "microbundle && rm -f dist/full-build",
+    "build:full": "touch dist/full-build && microbundle --external none",
     "watch": "microbundle watch",
-    "test": "concurrently \"cd tests/browser && http-server --cors -p 8181\" \"playwright test\"",
+    "test-server": "cd tests/browser && http-server --cors -p 8181",
+    "test": "playwright test",
     "test:build": "npm run build:full && npm test",
-    "test:ui": "concurrently \"cd tests/browser && http-server --cors -p 8181\" \"playwright test --ui\"",
-    "links": "chmod +x tests/test-setup.sh && tests/test-setup.sh"
+    "test:ui": "playwright test --ui",
+    "links": "chmod +x tests/test-setup.sh && tests/test-setup.sh",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@playwright/test": "^1.41.2",
@@ -28,7 +30,6 @@
     "@types/bun": "latest",
     "@types/node": "^20.11.17",
     "@vitest/browser": "^1.2.2",
-    "concurrently": "^8.2.2",
     "http-server": "^14.1.1",
     "microbundle": "^0.15.1",
     "vitest": "^1.2.2"
