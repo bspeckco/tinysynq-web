@@ -22,6 +22,7 @@
     "test:build": "npm run build:full && npm test",
     "test:ui": "playwright test --ui",
     "links": "chmod +x tests/test-setup.sh && tests/test-setup.sh",
+    "docs": "api-extractor run --local --verbose && api-documenter markdown --input-folder temp --output-folder docs",
     "prepare": "husky"
   },
   "devDependencies": {

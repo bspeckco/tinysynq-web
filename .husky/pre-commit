@@ -1,3 +1,4 @@
 pnpm run test:build
 pnpm run build:prod
+pnpm run docs
 git add dist
