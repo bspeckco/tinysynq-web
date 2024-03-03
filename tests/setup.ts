@@ -1,4 +1,4 @@
-import { SynQLiteInterface } from "../src/lib/types";
+import type { SynQLite } from "../src/lib/synqlite.class";
 import { nanoid } from 'nanoid';
 
 export const createStatements = [
@@ -21,7 +21,7 @@ export const createStatements = [
   )`
 ];
 
-export const postCreate = async ({ db }: { db: SynQLiteInterface }) => {
+export const postCreate = async ({ db }: { db: SynQLite }) => {
   // Create some records
   const savepoint = await db.beginTransaction();
 

@@ -1,475 +1,370 @@
-import { sqlite3Worker1Promiser } from '@sqlite.org/sqlite-wasm';
-import { SYNQLITE_BATCH_SIZE, SYNQLITE_PREFIX } from './constants.js';
-import { ApplyChangeParams, Change, LogLevel, SynQLiteOptions, SyncableTable } from './types.js';
-import { Logger, ILogObj, ISettingsParam } from 'tslog';
+import { Logger } from "tslog";
+import { SynQLite } from "./synqlite.class.js";
+import { SynQLiteOptions, SyncableTable } from "./types.js";
 
-const log = new Logger({ name: 'synqlite-web-init', minLevel: LogLevel.Info });
-const strtimeAsISO8601 = `STRFTIME('%Y-%m-%dT%H:%M:%f','NOW')`;
+/**
+ * Returns a configured instance of SynQLite
+ * 
+ * @param config - Configuration object 
+ * @returns SynQLite instance
+ * 
+ * @public
+ */
+const setupDatabase = async (config: SynQLiteOptions) => {
+  const {
+    tables,
+    preInit,
+    postInit,
+    logOptions,
+    debug,
+  } = config;
 
-export class SynQLite {
-  private _db: any;
-  private _dbName: string;
-  private _synqDbId?: string;
-  private _synqPrefix?: string;
-  private _synqTables?: SyncableTable[];
-  private _synqBatchSize: number = 20;
-  private _wal = false;
-  private log: Logger<ILogObj>;
+  if (!tables?.length) throw new Error('Syncable table data required');
 
-  utils = {
-    strtimeAsISO8601,
-    nowAsISO8601: strtimeAsISO8601,
-    utcNowAsISO8601: (): string => {
-      return new Date((new Date()).toUTCString()).toISOString();
-    }
-  }
+  const log = new Logger({ name: 'synqlite-setup', ...logOptions});
+  const db = new SynQLite(config);
 
-  constructor(initData: SynQLiteOptions) {
-    this._dbName = initData.filename || '';
-    this._db = initData.sqlite3 || undefined;
-    this._synqPrefix = initData.prefix;
-    this._synqTables = initData.tables;
-    this._synqBatchSize = initData.batchSize || this._synqBatchSize;
-    this._wal = initData.wal ?? false;
-    this.log = new Logger({
-      name: 'synqlite-web',
-      minLevel: LogLevel.Info,
-      type: 'json',
-      maskValuesOfKeys: ['password', 'encryption_key'],
-      hideLogPositionForProduction: true,
-      ...(initData.logOptions || {})
-    });
-  }
+  /**
+   * Pretty important: make sure to call `init()` :-)
+   */
 
-  async init() {
-    if (this.db) return Promise.resolve(this.db); // @TODO: test DB connection
-    if (!this.dbName) return Promise.reject('No DB filename or connection provided');
+  await db.init();
 
-    return new Promise(async (resolve, reject) => {
-      try {
-        this.log.debug('get promiser...')
-        const promiser: any = await new Promise((res) => {
-          const _promiser = sqlite3Worker1Promiser({
-            onready: () => {
-              res(_promiser);
-            },
-            onerror: (err: any) => {
-              this.log.error('@ERROR', err);
-            },
-            debug: (...args: any) => {
-              this.log.debug(...args);
-            },
-            onunhandled: (event: any) => {
-              this.log.error('@UNHANDLED', event);
-            }
-          });
-        });
-        
-        this.log.debug('get config...')
-        await promiser('config-get', {});
-
-        let res;
-  
-        try {
-          this.log.debug(`open ${this.dbName}...`);
-          res = await promiser('open', {
-            filename: `file:${this.dbName}?vfs=opfs`,
-          });
-  
-          this.log.info(
-            'OPFS is available, created persisted database at',
-            res.result.filename.replace(/^file:(.*?)\?vfs=opfs$/, '$1'),
-          );
-        }
-        catch(err) {
-          // Probably no vfs
-          res = await promiser('open', {
-            filename: `file:${this.dbName}`
-          });
-          this.log.info(
-            'OPFS not available, created in-memory database at',
-            res.result.filename, '$1'
-          );
-        }
-  
-        if (!res) return reject('Unable to start DB');
-
-        const { dbId } = res;
-        this._synqDbId = dbId;
-      
-        const conf = await promiser('config-get', {});
-        this.log.info('Running SQLite3 version', conf.result.version.libVersion);
-        
-        this._db = promiser;
-        resolve(this);
-      }
-      catch(err: any) {
-        if (!(err instanceof Error)) {
-          err = new Error(err.result.message);
-        }
-        this.log.error(err.name, err.message);
-        this.log.error(err)
-        reject('DB setup failed.');
-      }
-    });
-  };
-
-  get db() {
-    return this._db;
-  }
-
-  get dbName() {
-    return this._dbName;
-  }
-
-  get synqDbId() {
-    return this._synqDbId;
-  }
-
-  get synqPrefix() {
-    return this._synqPrefix;
-  }
-
-  get synqTables() {
-    return this._synqTables;
-  }
-
-  get synqBatchSize() {
-    return this._synqBatchSize;
-  }
-
-  get wal() {
-    return this._wal;
-  }
-
-  async runQuery<T>({sql, values}: {sql: string, values?: any[]}): Promise<T> {
-    const quid = Math.ceil(Math.random() * 1000000);
-    this.log.debug('@runQuery', quid, sql, values, '/');
-    const dbId = this.synqDbId;
-    return new Promise((resolve, reject) => {
-      const results: any[] = [];
-      try {
-        this.db('exec', {
-          dbId,
-          sql, // I think we can make this sexier, in Minmail
-          bind: values,
-          callback: (result: any) => {
-            if (!result.row) {
-              this.log.debug('@runQuery RESOLVED', quid);
-              return resolve(results as any);
-            }
-            const o: any = {};
-            result.row.forEach((col: string, i: number) => o[result.columnNames[i]] = result.row[i]);
-            results.push(o);
-          }
-        });
-      }
-      catch(err) {
-        this.log.error(quid, err);
-        reject(err);
-      }
-    });
-  }
-
-  async getLastSync() {
-    const res = await this.runQuery<any[]>({
-      sql:`
-        SELECT * FROM ${this.synqPrefix}_meta
-        WHERE meta_name = 'last_local_sync'`
-    });
-    return res[0];
-  }
-  
-  async getChangesSinceLastSync({db, lastSync}: {db: any, lastSync?: string}) {
-    let lastLocalSync: string = lastSync || (await this.getLastSync()).last_local_sync;
-    this.log.debug('@getChangesSinceLastSync', lastLocalSync);
-  
-    let where: string = '';
-  
-    if (lastLocalSync) {
-      where = 'WHERE modified_at > ?'
-    }
+  const getRecordMetaInsertQuery = ({table, remove = false}: {table: SyncableTable, remove?: boolean}) => {
+    /* 
+    db.is kind of insane, but it works. A rundown of what's happening:
+    - We're creating a trigger after a deletion (the easy part)
+    - Aside from recording the changes, we also need to add record-specific metadata:
+      - table name and row identifier,
+      - the number of times the record has been touched (including creation)
+      - the map of all changes across all devices — a Vector Clock (JSON format)
+    - Getting the vector clock is tricky, partly because of SQLite limitations
+      (no variables, control structures), and partly because it's possible that
+      no meta exists for the record.
+    - To work around db.we do a select to get the meta, but perform a union with
+      another select that just selects insert values.
+    - Included in both selects is
+      a 'peg' which we use to sort the UNIONed rows to ensure that if a valid row
+      exists, it's the first row returned.
+    - Now we select from db.union and limit to 1 result. If a record exists
+      then we get that record. If not, we get the values ready for insertion.
+    - Finally, if there's a conflict on PRIMAY KEY or UNIQUE contraints, we update
+      only the columns configured as editable.
+    */
+    const version = remove ? 'OLD' : 'NEW';
     const sql = `
-    SELECT * FROM ${this.synqPrefix}_changes
-      ${where}
-      ORDER BY modified_at ASC
-    `;
-    const values = lastLocalSync ? [lastLocalSync] : [];
-    this.log.debug(sql, values);
-  
-    return this.runQuery<Change[]>({sql, values});
-  };
-
-  private enableTriggers() {
-    return this.runQuery({
-      sql: `
-      INSERT OR REPLACE INTO ${this.synqPrefix}_meta (meta_name, meta_value)
-      VALUES ('triggers_on', '1')
-      RETURNING *;
-      `
-    });
+    INSERT INTO ${db.synqPrefix}_record_meta (table_name, row_id, mod, vclock)
+    SELECT table_name, row_id, mod, vclock
+    FROM (
+      SELECT
+        1 as peg,
+        '${table.name}' as table_name,
+        ${version}.${table.id} as row_id, 
+        IFNULL(json_extract(vclock,'$.${db.deviceId}'), 0) + 1 as mod, 
+        json_set(IFNULL(json_extract(vclock, '$'),'{}'), '$.${db.deviceId}', IFNULL(json_extract(vclock,'$.${db.deviceId}'), 0) + 1) as vclock
+      FROM ${db.synqPrefix}_record_meta
+      WHERE table_name = '${table.name}'
+      AND row_id = ${version}.${table.id}
+      UNION
+      SELECT 0 as peg, '${table.name}' as table_name, ${version}.${table.id} as row_id, 1, json_object('${db.deviceId}', 1) as vclock
+    )
+    ORDER BY peg DESC
+    LIMIT 1
+    ON CONFLICT DO UPDATE SET
+      mod = json_extract(excluded.vclock,'$.${db.deviceId}'),
+      vclock = json_extract(excluded.vclock,'$')
+    ;`;
+    log.silly(sql);
+    return sql;
   }
 
-  private disableTriggers() {
-    return this.runQuery({
-      sql: `
-      INSERT OR REPLACE INTO ${this.synqPrefix}_meta (meta_name, meta_value)
-      VALUES ('triggers_on', '0')
-      RETURNING *;
-      `
-    });
-  }
+  const setupTriggersForTable = async ({ table }: { table: SyncableTable }) => {
+    log.debug('Setting up triggers for', table.name);
 
-  private async beginTransaction(): Promise<string> {
-    const savepoint = `SP${Date.now()}`;
-    const sql = `SAVEPOINT ${savepoint};`;
-    await this.runQuery({sql});
-    return savepoint
-  }
-
-  private async commitTransaction({savepoint}: {savepoint: string}) {
-    const sql = `RELEASE SAVEPOINT ${savepoint};`;
-    return this.runQuery({sql});
-  }
-
-  private async rollbackTransaction({savepoint}: {savepoint: string}) {
-    const sql = `ROLLBACK TRANSACTION TO SAVEPOINT ${savepoint};`;
-    return this.runQuery({sql}); 
-  }
-
-  private async applyChange({
-    change,
-    savepoint
-  }: ApplyChangeParams) {
-    try {
-      const table = this.synqTables?.find(t => t.name === change.table_name);
-      let recordData: any;
-      if (change.data) {
-        try {
-          recordData = JSON.parse(change.data);
-        }
-        catch(err) {
-          this.log.debug(change);
-          throw new Error('Invalid data for insert or update');
-        }
-      }
-        
-      if (!table) throw new Error(`Unable to find table ${change.table_name}`);
-      switch(change.operation) {
-        case 'UPDATE':
-          const columnsToUpdate = Object.keys(recordData).map(key => `${key} = :${key}`).join(', ');
-          const updateValues = { ...recordData, [table.id]: change.row_id};
-          const updateSql = `UPDATE ${change.table_name} SET ${columnsToUpdate} WHERE ${table.id} = :${table.id}`;
-          // this.log.debug('@performing update... sql:', updateSql, updateValues);
-          await this.runQuery({sql: updateSql, values: updateValues});
-          break;
-        case 'INSERT':
-          const columnsToInsert = Object.keys(recordData).join(',');
-          const insertPlaceholders = Object.keys(recordData).map(k => `:${k}`).join(',')
-          const insertSql = `INSERT OR REPLACE INTO ${change.table_name} (${columnsToInsert}) VALUES (${insertPlaceholders});`;
-          // this.log.debug('@performing insert... sql:', insertSql, recordData);
-          await this.runQuery({sql: insertSql, values: recordData});
-          break;
-        case 'DELETE':
-          const sql = `DELETE FROM ${change.table_name} WHERE ${table.id} = ?`;
-          await this.runQuery({sql, values: [change.row_id]});
-          break;
-      }
-
-      // @TODO: do we need last_sync_local per table?
-      this.runQuery({
-        sql: `INSERT OR REPLACE INTO ${this.synqPrefix}_meta (meta_name, meta_value) VALUES('last_local_sync', STRFTIME('%Y-%m-%d %H:%M:%f','NOW'))`,
-      });
-    }
-    catch (error) {
-      await this.rollbackTransaction({savepoint})
-      this.log.error(`Error applying change: ${error}`);
-      throw error; // Throw the error to trigger rollback
-    }
-  }
-  
-  async applyChangesToLocalDB(changes: Change[]) {
-    await this.disableTriggers();
-    // Split changes into batches
-    for (let i = 0; i < changes.length; i += this.synqBatchSize) {
-      const batch = changes.slice(i, i + this.synqBatchSize);
-  
-      // Create savepoint and apply each batch within a transaction
-      const savepoint = await this.beginTransaction();
-      try {
-        for (const change of batch) {
-          await this.applyChange({change, savepoint})
-        }
-
-        // Commit the changes for this batch
-        await this.commitTransaction({savepoint});
-
-      } catch (error) {
-        await this.rollbackTransaction({savepoint})
-        this.log.error(`Transaction failed, changes rolled back: ${error}`);
-        // Handle transaction failure (e.g., log, retry logic, notification)
-      }
-    }
-    await this.enableTriggers();
-    this.log.debug(`Applied ${changes.length} change(s)`)
-  };
-
-  async setupTriggersForTable({ table }: { table: SyncableTable }) {
-    this.log.debug('Setting up triggers for', table.name);
-
-    // Ensure triggers are up to date
-    await this.runQuery({sql: `DROP TRIGGER IF EXISTS ${this.synqPrefix}_after_insert_${table.name}`});
-    await this.runQuery({sql: `DROP TRIGGER IF EXISTS ${this.synqPrefix}_after_update_${table.name}`});
-    await this.runQuery({sql: `DROP TRIGGER IF EXISTS ${this.synqPrefix}_after_delete_${table.name}`});
-
-    const jsonObject = (await this.runQuery<any>({
+    // Template for inserting the new value as JSON in the `*_changes` table.
+    const jsonObject = (await db.runQuery<any>({
       sql:`
       SELECT 'json_object(' || GROUP_CONCAT('''' || name || ''', NEW.' || name, ',') || ')' AS jo
       FROM pragma_table_info('${table.name}');`
     }))[0];
-    this.log.debug('@jsonObject', JSON.stringify(jsonObject, null, 2));
+    log.silly('@jsonObject', JSON.stringify(jsonObject, null, 2));
+
+    /**
+     * These triggers run for changes originating locally. They are disabled
+     * when remote changes are being applied (`triggers_on` in `*_meta` table).
+     */
+
+    // Ensure triggers are up to date
+    await db.run({sql: `DROP TRIGGER IF EXISTS ${db.synqPrefix}_after_insert_${table.name}`});
+    await db.run({sql: `DROP TRIGGER IF EXISTS ${db.synqPrefix}_after_update_${table.name}`});
+    await db.run({sql: `DROP TRIGGER IF EXISTS ${db.synqPrefix}_after_delete_${table.name}`});
 
     const sql = `
-      CREATE TRIGGER IF NOT EXISTS ${this.synqPrefix}_after_insert_${table.name}
+      CREATE TRIGGER IF NOT EXISTS ${db.synqPrefix}_after_insert_${table.name}
       AFTER INSERT ON ${table.name}
       FOR EACH ROW
-      WHEN (SELECT meta_value FROM synqlite_meta WHERE meta_name = 'triggers_on')='1'
+      WHEN (SELECT meta_value FROM ${db.synqPrefix}_meta WHERE meta_name = 'triggers_on')='1'
       BEGIN
-        INSERT INTO ${this.synqPrefix}_changes (table_name, row_id, operation, data)
+        INSERT INTO ${db.synqPrefix}_changes (table_name, row_id, operation, data)
         VALUES ('${table.name}', NEW.${table.id}, 'INSERT', ${jsonObject.jo});
-      END;`
-    await this.runQuery({sql});
 
-    await this.runQuery({
+        ${getRecordMetaInsertQuery({table})}
+      END;`
+    await db.run({sql});
+
+    await db.run({
       sql:`
-      CREATE TRIGGER IF NOT EXISTS ${this.synqPrefix}_after_update_${table.name}
+      CREATE TRIGGER IF NOT EXISTS ${db.synqPrefix}_after_update_${table.name}
       AFTER UPDATE ON ${table.name}
       FOR EACH ROW
-      WHEN (SELECT meta_value FROM synqlite_meta WHERE meta_name = 'triggers_on')='1'
+      WHEN (SELECT meta_value FROM ${db.synqPrefix}_meta WHERE meta_name = 'triggers_on')='1'
       BEGIN
-        INSERT INTO ${this.synqPrefix}_changes (table_name, row_id, operation, data)
+        INSERT INTO ${db.synqPrefix}_changes (table_name, row_id, operation, data)
         VALUES ('${table.name}', NEW.${table.id}, 'UPDATE', ${jsonObject.jo});
+
+        ${getRecordMetaInsertQuery({table})}
       END;`
     });
 
-    await this.runQuery({
+    await db.run({
       sql:`
-      CREATE TRIGGER IF NOT EXISTS ${this.synqPrefix}_after_delete_${table.name}
+      CREATE TRIGGER IF NOT EXISTS ${db.synqPrefix}_after_delete_${table.name}
       AFTER DELETE ON ${table.name}
       FOR EACH ROW
-      WHEN (SELECT meta_value FROM synqlite_meta WHERE meta_name = 'triggers_on')='1'
+      WHEN (SELECT meta_value FROM ${db.synqPrefix}_meta WHERE meta_name = 'triggers_on')='1'
       BEGIN
-        INSERT INTO ${this.synqPrefix}_changes (table_name, row_id, operation) VALUES ('${table.name}', OLD.${table.id}, 'DELETE');
+        INSERT INTO ${db.synqPrefix}_changes (table_name, row_id, operation) VALUES ('${table.name}', OLD.${table.id}, 'DELETE');
+        
+        ${getRecordMetaInsertQuery({table, remove: true})}
       END;`
     });
 
-    await this.enableTriggers();
-    this.log.debug(`@@@\nTriggers ready\n@@@`)
-  }
-}
+    /**
+     * All the triggers below will only be executed if `meta_name="debug_on"`
+     * has the `meta_value=1` in the *_meta table, regardless of `triggers_on`.
+     */
 
-export const setupDatabase = async ({
-  filename,
-  sqlite3,
-  prefix = SYNQLITE_PREFIX,
-  tables,
-  batchSize = SYNQLITE_BATCH_SIZE,
-  wal = false,
-  preInit = [],
-  postInit = [],
-  logOptions
-}: SynQLiteOptions) => {
-  /*
-  @TODO:
-   - check if DB path exists (throw if not)
-   - check if table names have been provided (throw if not)
-   - check if table names exist (throw if not)
-  */
-  const db = new SynQLite({
-    filename,
-    sqlite3,
-    prefix,
-    tables,
-    batchSize,
-    wal,
-    logOptions
-  });
-  log.debug('@SynQLite db', db)
-  
-  // Initialise the DB
-  try {
-    await db.init();
-  }
-  catch(err) {
-    log.error(err);
-    throw err;
-  }
+    // Remove previous versions
+    await db.run({sql: `DROP TRIGGER IF EXISTS ${db.synqPrefix}_dump_after_insert_${table.name}`});
+    await db.run({sql: `DROP TRIGGER IF EXISTS ${db.synqPrefix}_dump_after_update_${table.name}`});
+    await db.run({sql: `DROP TRIGGER IF EXISTS ${db.synqPrefix}_dump_after_delete_${table.name}`});
+    await db.run({sql: `DROP TRIGGER IF EXISTS ${db.synqPrefix}_dump_before_insert_record_meta`});
+    await db.run({sql: `DROP TRIGGER IF EXISTS ${db.synqPrefix}_dump_after_insert_record_meta`});
+    await db.run({sql: `DROP TRIGGER IF EXISTS ${db.synqPrefix}_dump_after_update_record_meta`});
 
-  prefix = prefix?.trim().replace(/[^a-z0-9]+$/gi, '');
-  log.debug({prefix, batchSize})
-
-  // Set WAL mode if necessary
-  if (wal === true) {
-    await db.runQuery({
-      sql: `PRAGMA journal_mode=WAL;`
+    /**
+     * @Debugging Do not remove
+     * These triggers allow a rudimentary tracing of DB actions on the synced tables.
+     */
+    await db.run({
+      sql:`
+      CREATE TRIGGER IF NOT EXISTS ${db.synqPrefix}_dump_after_insert_${table.name}
+      AFTER INSERT ON ${table.name}
+      FOR EACH ROW
+      WHEN (SELECT meta_value FROM ${db.synqPrefix}_meta WHERE meta_name = 'debug_on')='1'
+      BEGIN
+        INSERT INTO ${db.synqPrefix}_dump (table_name, operation, data)
+        VALUES ('${table.name}', 'INSERT', ${jsonObject.jo});
+      END;`
     });
+
+    await db.run({
+      sql:`
+      CREATE TRIGGER IF NOT EXISTS ${db.synqPrefix}_dump_after_update_${table.name}
+      AFTER UPDATE ON ${table.name}
+      FOR EACH ROW
+      WHEN (SELECT meta_value FROM ${db.synqPrefix}_meta WHERE meta_name = 'debug_on')='1'
+      BEGIN
+        INSERT INTO ${db.synqPrefix}_dump (table_name, operation, data) VALUES ('${table.name}', 'UPDATE', ${jsonObject.jo});
+      END;`
+    });
+
+    const oldJsonObject = jsonObject.jo.replace(/NEW/g, 'OLD');
+    
+    await db.run({
+      sql:`
+      CREATE TRIGGER IF NOT EXISTS ${db.synqPrefix}_dump_after_delete_${table.name}
+      AFTER DELETE ON ${table.name}
+      FOR EACH ROW
+      WHEN (SELECT meta_value FROM ${db.synqPrefix}_meta WHERE meta_name = 'debug_on')='1'
+      BEGIN
+        INSERT INTO ${db.synqPrefix}_dump (table_name, operation, data) VALUES ('${table.name}', 'DELETE', ${oldJsonObject});
+      END;`
+    });
+
+    /**
+     * @Debugging Do not remove
+     * These triggers allow comparison record meta before and after insert.
+     */
+
+    await db.run({
+      sql:`
+      CREATE TRIGGER IF NOT EXISTS ${db.synqPrefix}_dump_before_insert_record_meta
+      BEFORE INSERT ON ${db.synqPrefix}_record_meta
+      FOR EACH ROW
+      WHEN (SELECT meta_value FROM ${db.synqPrefix}_meta WHERE meta_name = 'debug_on')='1'
+      BEGIN
+        INSERT INTO ${db.synqPrefix}_dump (table_name, operation, data)
+        VALUES (NEW.table_name, 'BEFORE_INSERT', json_object('table_name', NEW.table_name, 'row_id', NEW.row_id, 'mod', NEW.mod, 'vclock', NEW.vclock));
+      END;`
+    });
+
+    await db.run({
+      sql:`
+      CREATE TRIGGER IF NOT EXISTS ${db.synqPrefix}_dump_after_insert_record_meta
+      AFTER INSERT ON ${db.synqPrefix}_record_meta
+      FOR EACH ROW
+      WHEN (SELECT meta_value FROM ${db.synqPrefix}_meta WHERE meta_name = 'debug_on')='1'
+      BEGIN
+        INSERT INTO ${db.synqPrefix}_dump (table_name, operation, data)
+        VALUES ('${table.name}', 'AFTER_INSERT', json_object('table_name', NEW.table_name, 'row_id', NEW.row_id, 'mod', NEW.mod, 'vclock', NEW.vclock));
+      END;`
+    });
+
+    await db.run({
+      sql:`
+      CREATE TRIGGER IF NOT EXISTS ${db.synqPrefix}_dump_after_update_record_meta
+      AFTER UPDATE ON ${db.synqPrefix}_record_meta
+      FOR EACH ROW
+      WHEN (SELECT meta_value FROM ${db.synqPrefix}_meta WHERE meta_name = 'debug_on')='1'
+      BEGIN
+        INSERT INTO ${db.synqPrefix}_dump (table_name, operation, data)
+        VALUES ('${table.name}', 'AFTER_UPDATE', json_object('table_name', NEW.table_name, 'row_id', NEW.row_id, 'mod', NEW.mod, 'vclock', NEW.vclock));
+      END;`
+    });
+
+    /* END OF DEBUG TRIGGERS */
   }
 
-  if (preInit?.length > 0) {
-    for (const preInitQuery of preInit) {
-      log.debug(`@@@\npreInit\n${preInitQuery}\n@@@`)
-      await db.runQuery({
-        sql: preInitQuery
-      });
-    }
-  }
-  
-  // Create a change-tracking table
-  await db.runQuery({
+  // Create a change-tracking table and index
+  await db.run({
     sql:`
-    CREATE TABLE IF NOT EXISTS ${prefix}_changes (
+    CREATE TABLE IF NOT EXISTS ${db.synqPrefix}_changes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       table_name TEXT NOT NULL,
       row_id TEXT NOT NULL,
       data BLOB,
       operation TEXT NOT NULL, -- 'INSERT', 'UPDATE', 'DELETE'
-      modified_at TIMESTAMP DATETIME DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f','NOW'))
+      modified TIMESTAMP DATETIME DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f','NOW'))
     );`
   });
-    
-  // Create the index
-  db.runQuery({
-    sql: `CREATE INDEX IF NOT EXISTS ${prefix}_change_modified_idx ON ${prefix}_changes(modified_at)`
+  
+  await db.run({
+    sql:`CREATE INDEX IF NOT EXISTS ${db.synqPrefix}_change_modified_idx ON ${db.synqPrefix}_changes(modified)`
   });
 
-  db.runQuery({
+  // Change *_pending is essentially a clone of *_changes used to hold items that
+  // cannot be applied yet because intermediate/preceding changes haven't been received.
+  await db.run({
     sql:`
-    CREATE TABLE IF NOT EXISTS ${prefix}_meta (
+    CREATE TABLE IF NOT EXISTS ${db.synqPrefix}_pending (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      table_name TEXT NOT NULL,
+      row_id TEXT NOT NULL,
+      data BLOB,
+      operation TEXT NOT NULL, -- 'INSERT', 'UPDATE', 'DELETE',
+      vclock BLOB NOT NULL,
+      modified TIMESTAMP DATETIME DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f','NOW'))
+    );`
+  });
+  
+  await db.run({
+    sql:`CREATE INDEX IF NOT EXISTS ${db.synqPrefix}_pending_table_row_idx ON ${db.synqPrefix}_pending(table_name, row_id)`
+  });
+
+  // Create a notice table
+  await db.run({
+    sql:`
+    CREATE TABLE IF NOT EXISTS ${db.synqPrefix}_notice (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      table_name TEXT NOT NULL,
+      row_id TEXT NOT NULL,
+      conflict BLOB,
+      message TEXT NOT NULL,
+      created TIMESTAMP DATETIME DEFAULT(STRFTIME('%Y-%m-%dT%H:%M:%f','NOW'))
+    );`
+  }); 
+
+  // Create record meta table and index
+  await db.run({
+    sql:`
+    CREATE TABLE IF NOT EXISTS ${db.synqPrefix}_record_meta (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      table_name TEXT NOT NULL,
+      row_id TEXT NOT NULL,
+      mod INTEGER,
+      vclock BLOB,
+      modified TIMESTAMP DATETIME DEFAULT(STRFTIME('%Y-%m-%dT%H:%M:%f','NOW'))
+    );`
+  });
+
+  await db.run({
+    sql:`CREATE UNIQUE INDEX IF NOT EXISTS ${db.synqPrefix}_record_meta_idx ON ${db.synqPrefix}_record_meta(table_name, row_id)`
+  });
+
+  // Create meta table
+  await db.run({
+    sql:`
+    CREATE TABLE IF NOT EXISTS ${db.synqPrefix}_meta (
       meta_name TEXT NOT NULL PRIMARY KEY,
       meta_value TEXT NOT NULL
-    );`
-  });
-  db.runQuery({
-    sql: `CREATE INDEX IF NOT EXISTS ${prefix}_meta_name_idx ON ${prefix}_meta(meta_name)`
-  });
+    );
+  `});
 
-  try {
-    for (const table of tables) {
-      await db.setupTriggersForTable({ table });
-    }
+  await db.run({
+    sql: `
+    CREATE TABLE IF NOT EXISTS ${db.synqPrefix}_dump (
+      created TIMESTAMP DATETIME DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f','NOW')), 
+      table_name TEXT NOT NULL,
+      operation TEXT,
+      data BLOB
+    );
+  `});
 
-    if (postInit?.length > 0) {
-      for (const postInitQuery of postInit) {
-        log.debug(`@@@\npostInit\n${postInitQuery}\n@@@`)
-        await db.runQuery({
-          sql: postInitQuery
-        });
-      }
+  await db.run({
+    sql: `CREATE INDEX IF NOT EXISTS ${db.synqPrefix}_meta_name_idx ON ${db.synqPrefix}_meta(meta_name)`
+  });
+  
+  // Enable debug mode
+  if (debug) await db.enableDebug();
+
+  // Set the device ID
+  await db.setDeviceId();
+
+  // Run pre-initialisation queries
+  if (preInit?.length) {
+    for (const preInitQuery of preInit) {
+      log.debug(`\n@@@ preInit\n${preInitQuery}\n@@@`)
+      await db.run({
+        sql: preInitQuery
+      });
     }
   }
-  catch(err) {
-    log.error('Failed to setup triggers', err);
-    return null
+
+  log.debug(`@${db.synqPrefix}_meta`, db.runQuery({sql:`SELECT * FROM pragma_table_info('${db.synqPrefix}_meta')`}));
+  log.debug(`@SIMPLE_SELECT`, db.runQuery({sql:`SELECT '@@@ that was easy @@@'`}));
+
+  for (const table of tables) {
+    // Check table exists
+    const exists = await db.runQuery<Record<string, any>>({
+      sql: `SELECT * FROM pragma_table_info('${table.name}')`
+    });
+    log.debug('@exists?', table.name, exists);
+    if (!exists?.length) throw new Error(`${table.name} doesn't exist`);
+    
+    log.debug('Setting up', table.name, table.id);
+
+    await setupTriggersForTable({ table });
+    db.tablesReady();
+  }
+
+  if (postInit?.length) {
+    for (const postInitQuery of postInit) {
+      log.debug(`@@@\npostInit\n${postInitQuery}\n@@@`)
+      await db.run({
+        sql: postInitQuery
+      });
+    }
   }
 
   return db;

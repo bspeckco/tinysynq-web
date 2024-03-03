@@ -32,7 +32,7 @@ test.describe('SynQLite', () => {
       let db;
       try {
         db = await synqlite({
-          filename: 'pwtst.db',
+          filePath: 'pwtst.db',
           prefix: 'pwtst',
           tables: [
             { name: 'member', id: 'member_id'},

@@ -1,2 +1,2 @@
-import SynQLite from './lib/index.js';
-export default SynQLite;
+import lib from './lib/index.js';
+export default lib;

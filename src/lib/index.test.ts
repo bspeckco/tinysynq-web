@@ -1,5 +1,5 @@
 import { describe, test, beforeAll, beforeEach, expect, afterAll } from 'vitest';
-import setupDatabase from './index.js';
+import setupDatabase from './index.old.js';
 import type { SynQLiteOptions, SynqlDatabase } from './types.js';
 import { nanoid } from 'nanoid';
 import fs from 'fs';
