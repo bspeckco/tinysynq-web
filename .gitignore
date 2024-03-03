@@ -185,3 +185,6 @@ tests/browser/synqlite.module.js
 
 # Exclude status file
 dist/full-build
+
+# api-extractor
+temp
