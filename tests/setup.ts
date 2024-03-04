@@ -1,4 +1,4 @@
-import type { SynQLite } from "../src/lib/synqlite.class";
+import type { TinySynq } from "../src/lib/tinysynq.class";
 import { nanoid } from 'nanoid';
 
 export const createStatements = [
@@ -21,7 +21,7 @@ export const createStatements = [
   )`
 ];
 
-export const postCreate = async ({ db }: { db: SynQLite }) => {
+export const postCreate = async ({ db }: { db: TinySynq }) => {
   // Create some records
   const savepoint = await db.beginTransaction();
 

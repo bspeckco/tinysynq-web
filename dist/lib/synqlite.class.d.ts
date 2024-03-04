@@ -1,4 +1,4 @@
-import { Change, QueryParams, SynQLiteOptions, SyncableTable, TableNameRowParams } from './types.js';
+import { Change, QueryParams, TinySynqOptions, SyncableTable, TableNameRowParams } from './types.js';
 /**
  * Basic utilities, mainly date-oriented.
  */
@@ -23,7 +23,7 @@ export type GetTableIdColumnParams = {
  *
  * @public
  */
-export declare class SynQLite {
+export declare class TinySynq {
     private _db;
     private _dbPath;
     private _deviceId;
@@ -41,11 +41,11 @@ export declare class SynQLite {
      */
     readonly utils: Utils;
     /**
-     * Configure new SynQLite instance.
+     * Configure new TinySynq instance.
      *
      * @param opts - Configuration options
      */
-    constructor(opts: SynQLiteOptions);
+    constructor(opts: TinySynqOptions);
     init(): Promise<any>;
     /**
      * SQLiteWASM instance (See {@link https://github.com/sqlite/sqlite-wasm | SQLite Wasm})
@@ -71,13 +71,13 @@ export declare class SynQLite {
      */
     get deviceId(): string | undefined;
     /**
-     * Alias for {@link SynQLite.deviceId}.
+     * Alias for {@link TinySynq.deviceId}.
      */
     get synqDbId(): string | undefined;
     /**
-     * The prefix used for SynQLite's tables.
+     * The prefix used for TinySynq's tables.
      *
-     * @defaultValue `synqlite`
+     * @defaultValue `tinysynq`
      */
     get synqPrefix(): string | undefined;
     /**
@@ -85,7 +85,7 @@ export declare class SynQLite {
      *
      * @remarks
      *
-     * A {@link SyncableTable} structure is never modified. SynQLite maintains
+     * A {@link SyncableTable} structure is never modified. TinySynq maintains
      * its own tables and triggers for tracking and responding to changes.
      *
      * @returns Record\<string, SyncableTable\>
@@ -143,7 +143,7 @@ export declare class SynQLite {
      */
     runQuery<T = any>(params: QueryParams): Promise<T>;
     /**
-     * Returns the current device's unique SynQLite ID.
+     * Returns the current device's unique TinySynq ID.
      *
      * @returns The device's assigned ID.
      */
@@ -203,7 +203,7 @@ export declare class SynQLite {
      * Writes debug mode value (false) which disables recording
      * of operations on syncable tables.
      *
-     * @see {@link SynQLite.enableDebug} for more details.
+     * @see {@link TinySynq.enableDebug} for more details.
      *
      * @returns Result of the operation.
      */
@@ -211,7 +211,7 @@ export declare class SynQLite {
     /**
      * Empties the `*_dump` table.
      *
-     * @see {@link SynQLite.enableDebug} for more details.
+     * @see {@link TinySynq.enableDebug} for more details.
      */
     clearDebugData(): Promise<void>;
     /**
@@ -248,7 +248,7 @@ export declare class SynQLite {
      * @remarks
      *
      * The column used to identify the record is according to the {@link SyncableTable}
-     * that was provided in {@link SynQLiteOptionsBase.tables} at instantiation.
+     * that was provided in {@link TinySynqOptionsBase.tables} at instantiation.
      *
      * @param params - Object containing table/row parameters.
      * @returns

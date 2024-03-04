@@ -1,0 +1,1 @@
+../../dist/tinysynq.module.js

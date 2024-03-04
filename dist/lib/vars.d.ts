@@ -1,9 +1,9 @@
-import { Change, SynQLiteOptions, SyncableTable } from './types.js';
+import { Change, TinySynqOptions, SyncableTable } from './types.js';
 type ApplyChangeParams = {
     change: Change;
     savepoint: string;
 };
-declare class SynQLite {
+declare class TinySynq {
     private _db;
     private _dbName;
     private _synqDbId?;
@@ -15,7 +15,7 @@ declare class SynQLite {
         nowAsISO8601: string;
         utcNowAsISO8601: () => string;
     };
-    constructor(initData: SynQLiteOptions);
+    constructor(initData: TinySynqOptions);
     init(): Promise<any>;
     get db(): any;
     get dbName(): string;
@@ -35,5 +35,5 @@ declare class SynQLite {
     applyChange({ change, savepoint }: ApplyChangeParams): Promise<void>;
     applyChangesToLocalDB(changes: Change[]): Promise<void>;
 }
-export declare const setupDatabase: ({ filename, sqlite3, prefix, tables, batchSize, }: SynQLiteOptions) => Promise<SynQLite>;
+export declare const setupDatabase: ({ filename, sqlite3, prefix, tables, batchSize, }: TinySynqOptions) => Promise<TinySynq>;
 export default setupDatabase;

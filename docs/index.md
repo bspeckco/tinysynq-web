@@ -8,5 +8,5 @@
 
 |  Package | Description |
 |  --- | --- |
-|  [synqlite-web](./synqlite-web.md) |  |
+|  [tinysynq-web](./tinysynq-web.md) |  |
 

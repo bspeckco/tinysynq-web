@@ -3,14 +3,14 @@ import { createStatements } from './setup';
 import { Logger } from 'tslog';
 import { LogLevel } from '../src/lib/types';
 
-const log = new Logger({ name: 'SynQLite Testing', minLevel: 1 });
+const log = new Logger({ name: 'TinySynq Testing', minLevel: 1 });
 
 type TestWindow = Window & {
-  synqlite?: any;
+  tinysynq?: any;
   [key: string]: any
 };
 
-test.describe('SynQLite', () => {
+test.describe('TinySynq', () => {
 
   test('load', async () => {
     test.setTimeout(20000);
@@ -23,15 +23,15 @@ test.describe('SynQLite', () => {
     });
 
     await page.goto('http://localhost:8181');
-    await page.waitForFunction(() => !!window['synqlite']);
+    await page.waitForFunction(() => !!window['tinysynq']);
 
     const preInit = createStatements;
 
     const res = await page.evaluate(async ([preInit, LogLevel]) => {
-      const { synqlite } = window as TestWindow;
+      const { tinysynq } = window as TestWindow;
       let db;
       try {
-        db = await synqlite({
+        db = await tinysynq({
           filePath: 'pwtst.db',
           prefix: 'pwtst',
           tables: [
@@ -40,7 +40,7 @@ test.describe('SynQLite', () => {
           ],
           preInit,
           logOptions: {
-            name: 'test-synqlite',
+            name: 'test-tinysynq',
             minLevel: LogLevel['Trace']
           }
         });

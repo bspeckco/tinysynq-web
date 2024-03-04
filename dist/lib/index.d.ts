@@ -1,12 +1,12 @@
-import { SynQLite } from "./synqlite.class.js";
-import { SynQLiteOptions } from "./types.js";
+import { TinySynq } from "./tinysynq.class.js";
+import { TinySynqOptions } from "./types.js";
 /**
- * Returns a configured instance of SynQLite
+ * Returns a configured instance of TinySynq
  *
  * @param config - Configuration object
- * @returns SynQLite instance
+ * @returns TinySynq instance
  *
  * @public
  */
-declare const setupDatabase: (config: SynQLiteOptions) => Promise<SynQLite>;
+declare const setupDatabase: (config: TinySynqOptions) => Promise<TinySynq>;
 export default setupDatabase;

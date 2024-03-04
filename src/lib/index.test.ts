@@ -1,6 +1,6 @@
 import { describe, test, beforeAll, beforeEach, expect, afterAll } from 'vitest';
 import setupDatabase from './index.old.js';
-import type { SynQLiteOptions, SynqlDatabase } from './types.js';
+import type { TinySynqOptions, SynqlDatabase } from './types.js';
 import { nanoid } from 'nanoid';
 import fs from 'fs';
 
@@ -10,7 +10,7 @@ const ID_SIZE = 16; // 1000 years to reach 1% probability of collision at 1000 I
 
 type PostCreateFunction = (db: any) => void;
 type GetConfiguredDbParams = {
-  config: SynQLiteOptions,
+  config: TinySynqOptions,
   path?: string;
   createStatements?: string[];
   postCreate?: PostCreateFunction;

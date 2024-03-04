@@ -1,4 +1,4 @@
-# synqlite-web
+# tinysync-web
 
 To install dependencies:
 

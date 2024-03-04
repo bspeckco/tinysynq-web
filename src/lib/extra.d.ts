@@ -1,8 +1,8 @@
-declare module 'SynQLiteWeb' {
-  import { SynQLiteInterface } from './types.ts';
+declare module 'TinySynqWeb' {
+  import { TinySynqInterface } from './types.ts';
   // import { setupDatabase } from './index.js';
   // export const setupDatabase = setupDatabase;
-  // export default SynQLiteInterface;
+  // export default TinySynqInterface;
 }
 
 // TODO remove this once `@sqlite.org/sqlite-wasm` has types
