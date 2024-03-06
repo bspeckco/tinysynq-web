@@ -1,6 +1,12 @@
 import type { TinySynq } from "../src/lib/tinysynq.class";
 import { nanoid } from 'nanoid';
 
+export type TestWindow = Window & {
+  tinysynq?: any;
+  sq?: any;
+  [key: string]: any
+};
+
 export const createStatements = [
   `CREATE TABLE IF NOT EXISTS member (
     member_id TEXT NOT NULL PRIMARY KEY,
@@ -56,3 +62,37 @@ export const postCreate = async ({ db }: { db: TinySynq }) => {
     throw err;
   }
 };
+
+export const pageInit = async ({page, log}) => {
+  page.on('console', (...args) => {
+    log.info(...args);
+  });
+  await page.goto('http://localhost:8181');
+  await page.waitForFunction(() => !!window['tinysynq']);
+}
+
+export const setupDb = async (args: any[]) => {
+  const [preInit, LogLevel, funcDef] = args;
+  const { tinysynq } = window as TestWindow;
+  try {
+    window['sq'] = await tinysynq({
+      filePath: 'pwtst.db',
+      prefix: 'pwtst',
+      tables: [
+        { name: 'member', id: 'member_id'},
+        { name: 'message', id: 'message_id'}
+      ],
+      preInit,
+      logOptions: {
+        name: 'test-tinysynq',
+        minLevel: LogLevel['Trace'],
+        type: 'pretty'
+      }
+    });
+    return window['sq']?.deviceId;
+  }
+  catch(err) {
+    console.error('\n >>>>> ERR! Unable to complete setup <<<<<\n', err);
+    return false;
+  }
+}

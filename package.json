@@ -19,13 +19,16 @@
     "watch": "microbundle watch",
     "test-server": "cd tests/browser && http-server --cors -p 8181",
     "test": "playwright test",
-    "test:build": "npm run build:full && npm test",
+    "test:watch": "PWTEST_WATCH=1 pnpm test",
+    "test:build": "pnpm build:full && pnpm test",
     "test:ui": "playwright test --ui",
     "links": "chmod +x tests/test-setup.sh && tests/test-setup.sh",
     "docs": "api-extractor run --local --verbose && api-documenter markdown --input-folder temp --output-folder docs",
     "prepare": "husky"
   },
   "devDependencies": {
+    "@microsoft/api-documenter": "^7.23.37",
+    "@microsoft/api-extractor": "^7.42.3",
     "@playwright/test": "^1.41.2",
     "@types/better-sqlite3": "^7.6.9",
     "@types/bun": "latest",
