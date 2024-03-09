@@ -7,15 +7,19 @@ import { nanoid } from 'nanoid';
 
 const log = new Logger({ name: 'TinySynq Testing', minLevel: LogLevel.Debug, type: 'pretty' });
 
-test.describe.only('CRUD', () => {
-  test('UPDATE is applied correctly', async ({page}) => {
+test.describe('CRUD', () => {
+
+  test.beforeEach(async ({page}) => {
     test.setTimeout(20000);
-    
+
     await pageInit({page, log});
     //const sq = getConfiguredDb({useDefault: true});
     const preInit = defaultPreInit;
 
     await page.evaluate(setupDb, [preInit, LogLevel]);
+  });
+
+  test('UPDATE is applied correctly', async ({page}) => {
     const records = await page.evaluate(postCreate);
     expect(records).toHaveLength(20);
     const record = records[0];
@@ -59,13 +63,6 @@ test.describe.only('CRUD', () => {
   });
 
   test('DELETE is applied correctly', async ({page}) => {
-    test.setTimeout(20000);
-    
-    await pageInit({page, log});
-    //const sq = getConfiguredDb({useDefault: true});
-    const preInit = defaultPreInit;
-
-    await page.evaluate(setupDb, [preInit, LogLevel]);
     const records = await page.evaluate(postCreate);
     expect(records).toHaveLength(20);
 
@@ -101,17 +98,12 @@ test.describe.only('CRUD', () => {
       sq.log.warn({deleted, existing})
       return deleted[0];
     });
+
+    await closeDb(page);
     expect(deleted).toBeFalsy();
   });
   
   test('INSERT is applied correctly', async ({page}) => {
-    test.setTimeout(20000);
-    
-    await pageInit({page, log});
-    //const sq = getConfiguredDb({useDefault: true});
-    const preInit = defaultPreInit;
-
-    await page.evaluate(setupDb, [preInit, LogLevel]);
     const records = await page.evaluate(postCreate);
     expect(records).toHaveLength(20); 
 
@@ -152,6 +144,7 @@ test.describe.only('CRUD', () => {
       return inserted;
     }, [now]);
 
+    await closeDb(page);
     expect(inserted).toBeTruthy();
     expect(inserted.message_created).toEqual(now);
   });
