@@ -62,7 +62,7 @@ export const postCreate = async () => {
     const result = await sq.runQuery({
       sql: `SELECT * FROM message`
     });
-    sq.log.warn('<<<< RESULT >>>>', result);
+    sq.log.warn('<<<< RESULT >>>>', result.length);
     return result;
   }
   catch(err) {
