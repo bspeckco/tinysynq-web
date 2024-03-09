@@ -1,2 +1,2 @@
-export declare const SYNQLITE_PREFIX = "synql";
-export declare const SYNQLITE_BATCH_SIZE = 20;
+export declare const TINYSYNQ_PREFIX = "tsynq";
+export declare const TINYSYNQ_BATCH_SIZE = 20;

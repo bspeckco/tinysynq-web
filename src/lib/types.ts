@@ -134,6 +134,7 @@ export type SQLite3 = any
 export type QueryParams = {
   sql: string;
   values?: any;
+  prefix?: string;
 }
 
 /**

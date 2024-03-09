@@ -9,21 +9,18 @@ Run multiple operations against the DB
 **Signature:**
 
 ```typescript
-runMany(params: {
-        sql: string;
-        values: any[];
-    }): Promise<any>;
+runMany(params: QueryParams): Promise<unknown>;
 ```
 
 ## Parameters
 
 |  Parameter | Type | Description |
 |  --- | --- | --- |
-|  params | { sql: string; values: any\[\]; } | The SQL query and optionally an array of arrays or key/value pairs |
+|  params | [QueryParams](./tinysynq-web.queryparams.md) | The SQL query and optionally an array of arrays or key/value pairs |
 
 **Returns:**
 
-Promise&lt;any&gt;
+Promise&lt;unknown&gt;
 
 Undefined or an error, if one occurred
 

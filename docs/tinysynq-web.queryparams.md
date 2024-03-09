@@ -12,5 +12,6 @@ Basic query params for methods that read from/write to DB.
 export type QueryParams = {
     sql: string;
     values?: any;
+    prefix?: string;
 };
 ```

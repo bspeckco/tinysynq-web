@@ -1,5 +1,7 @@
 import type { TinySynq } from "../src/lib/tinysynq.class";
 import { nanoid } from 'nanoid';
+import { getRandomDbPath } from "./utils";
+import { TinySynqOptions } from "../src/lib/types";
 
 export type TestWindow = Window & {
   tinysynq?: any;
@@ -27,38 +29,45 @@ export const createStatements = [
   )`
 ];
 
-export const postCreate = async ({ db }: { db: TinySynq }) => {
+export const postCreate = async () => {
+  const sq = window['sq'];
+  
   // Create some records
-  const savepoint = await db.beginTransaction();
+  //const savepoint = await sq.beginTransaction();
 
-  console.debug('::: BEGINNING TRANSACTION:', db.constructor.name); 
+  //console.debug('::: BEGINNING TRANSACTION:', sq.constructor.name); 
   try {
     for (let i = 0; i < 20; i++) {
-      const id = nanoid(16);
-      await db.runQuery({
+      const id = sq.getNewId();
+      await sq.runQuery({
         sql:`
         INSERT INTO member (member_id, member_name, member_status)
         VALUES (:member_id, :member_name, :member_status)`,
-        values: [id, `member:${id}`, 'ONLINE']
+        values: {member_id: id, member_name: `member:${id}`, member_status: 'ONLINE'}
       });
     }
     for (let i = 0; i < 20; i++) {
-      const id = nanoid(16);
-      await db.runQuery({
+      const id = sq.getNewId();
+      await sq.runQuery({
         sql:`
         INSERT INTO message (message_id, message_text, message_member_id)
         SELECT :message_id, :message_text, member_id
         FROM member
         ORDER BY RANDOM()
         LIMIT 1`,
-        values: [ id, `${id} message text ${Date.now()}` ]
+        values: { message_id: id, message_text: `${id} message text ${Date.now()}` }
       });
     }
-    await db.commitTransaction({ savepoint });
+    //await sq.commitTransaction({ savepoint });
+    const result = await sq.runQuery({
+      sql: `SELECT * FROM message`
+    });
+    sq.log.warn('<<<< RESULT >>>>', result);
+    return result;
   }
   catch(err) {
     console.error('::: TRANSACTION FAILED!', err);
-    await db.rollbackTransaction({ savepoint });
+    //await sq.rollbackTransaction({ savepoint });
     throw err;
   }
 };
@@ -72,15 +81,19 @@ export const pageInit = async ({page, log}) => {
 }
 
 export const setupDb = async (args: any[]) => {
-  const [preInit, LogLevel, funcDef] = args;
+  const [preInit, LogLevel] = args;
   const { tinysynq } = window as TestWindow;
+  const randVal = Math.ceil(Math.random() * 1000);
+  const filePath = `tst_${randVal}.db`;
+  const prefix = `tst_${randVal}`;
+console.log('<<<< SETUP >>>>',{filePath, prefix})
   try {
     window['sq'] = await tinysynq({
-      filePath: 'pwtst.db',
-      prefix: 'pwtst',
+      filePath,
+      prefix,
       tables: [
-        { name: 'member', id: 'member_id'},
-        { name: 'message', id: 'message_id'}
+        { name: 'member', id: 'member_id', editable: ['member_name', 'member_status']},
+        { name: 'message', id: 'message_id', editable: ['message_text', 'message_updated']}
       ],
       preInit,
       logOptions: {
@@ -88,7 +101,7 @@ export const setupDb = async (args: any[]) => {
         minLevel: LogLevel['Trace'],
         type: 'pretty'
       }
-    });
+    } as TinySynqOptions);
     return window['sq']?.deviceId;
   }
   catch(err) {

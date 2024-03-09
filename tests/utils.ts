@@ -13,3 +13,7 @@ export const closeDb = async (page: Page) => {
     }
   });
 }
+
+export function getRandomDbPath() {
+  return `tst_${Math.ceil(Math.random() * 1000)}.db`;
+}

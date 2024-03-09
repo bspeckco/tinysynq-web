@@ -29,6 +29,7 @@ export type GetTableIdColumnParams = {
 export type QueryParams = {
     sql: string;
     values?: any;
+    prefix?: string;
 };
 
 // @public
@@ -80,6 +81,7 @@ export class TinySynq {
     }): Promise<Change[]>;
     getDeviceId(): Promise<string>;
     getLastSync(): Promise<string>;
+    getNewId(): string;
     getPending(): Promise<any>;
     getRecordMeta(params: {
         table_name: string;
@@ -90,15 +92,16 @@ export class TinySynq {
     init(): Promise<any>;
     // (undocumented)
     insertRecordMeta({ change, vclock }: any): Promise<any>;
+    reformatQueryValues({ values, prefix }: {
+        values: any;
+        prefix?: string;
+    }): any;
     // (undocumented)
     rollbackTransaction({ savepoint }: {
         savepoint: string;
     }): Promise<any>;
     run<T = any>(params: QueryParams): Promise<T>;
-    runMany(params: {
-        sql: string;
-        values: any[];
-    }): Promise<any>;
+    runMany(params: QueryParams): Promise<unknown>;
     runQuery<T = any>(params: QueryParams): Promise<T>;
     setDeviceId(): Promise<void>;
     get synqBatchSize(): number;

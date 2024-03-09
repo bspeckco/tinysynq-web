@@ -126,6 +126,7 @@ export type SQLite3 = any;
 export type QueryParams = {
     sql: string;
     values?: any;
+    prefix?: string;
 };
 /**
  * Table name and row parameters for retrieving data for a specific record.

@@ -1,4 +1,4 @@
-import { test, expect, chromium } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { createStatements as defaultPreInit, pageInit, setupDb } from './setup';
 import { Logger } from 'tslog';
 import { LogLevel } from '../src/lib/types';
