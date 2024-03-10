@@ -5,6 +5,7 @@ import { LogLevel } from '../src/lib/types';
 import { closeDb } from './utils';
 import { nanoid } from 'nanoid';
 import { TinySynq } from '../src/lib/tinysynq.class';
+import { TINYSYNQ_ID_SIZE} from '../src/lib/constants';
 
 const log = new Logger({ name: 'TinySynq Testing', minLevel: LogLevel.Debug, type: 'pretty' });
 
@@ -61,5 +62,59 @@ test.describe.only('Sync', () => {
       expect(meta).toBeTruthy();
       expect(meta.vclock).toMatch(JSON.stringify({[deviceId]: 2}) as any);
     });
-  })
+
+    test.only('should add another participant', async ({page}) => {
+      const localId = await page.evaluate(async () => {
+        return window['sq'].deviceId;
+      });
+      const remoteId = nanoid(TINYSYNQ_ID_SIZE);
+      const changes = await page.evaluate(async ([remoteId]) => {
+        const sq = window['sq'];
+        const tst = window['tst'];
+        const changes = await tst.generateChangesForTable({
+          sq,
+          table: 'message',
+          origin: remoteId,
+          operation: 'UPDATE',
+        });
+      
+        sq.log.trace('@@@@ >>> GENERATED CHANGES >>> @@@@', {changes});
+
+        return changes;
+      }, [remoteId]);
+      log.trace('<<!!! CHANGES !!!>>', {changes});
+
+      const {message, originalMeta} = await page.evaluate(async ([row_id]) => {
+        const sq = window['sq'] as TinySynq;
+        const message = (
+          await sq.runQuery({
+            sql: 'SELECT * FROM message WHERE message_id = :message_id',
+            values: {message_id: row_id}
+          })
+        )[0];
+        const originalMeta = (
+          await sq.getRecordMeta({
+            table_name: 'message', row_id
+          })
+        );
+        return {message, originalMeta};
+      }, [changes[0].message_id]);
+      log.trace('<<!!! DATA !!!>>', {message, originalMeta});
+
+      const newMeta = await page.evaluate(async ([changes]) => {
+        const sq = window['sq'];
+        const tst = window['tst'];
+        sq.applyChangesToLocalDB({ changes });
+        
+        // Change might not be immediately visible, wait a moment.
+        await tst.wait({ms: 100});
+        const meta = sq.getRecordMeta({table_name: 'message', row_id: changes[0].row_id});
+        return meta
+      }, [changes]);
+      log.trace('<<!!! NEW META !!!>>', {newMeta});
+
+      await closeDb(page);
+      expect(newMeta[0].vclock).toMatch(JSON.stringify({[localId]: 1, [remoteId]: 1}));
+    }); 
+  });
 });

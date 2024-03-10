@@ -1,4 +1,6 @@
 import { Page } from "@playwright/test";
+import { Change, TinySynqOperation } from "../src/lib/types";
+import { TinySynq } from "../src/lib/tinysynq.class";
 
 export const closeDb = async (page: Page) => {
   return await page.evaluate(() => {
