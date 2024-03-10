@@ -63,7 +63,7 @@ test.describe.only('Sync', () => {
       expect(meta.vclock).toMatch(JSON.stringify({[deviceId]: 2}) as any);
     });
 
-    test.only('should add another participant', async ({page}) => {
+    test('should add another participant', async ({page}) => {
       const localId = await page.evaluate(async () => {
         return window['sq'].deviceId;
       });
@@ -115,6 +115,75 @@ test.describe.only('Sync', () => {
 
       await closeDb(page);
       expect(newMeta[0].vclock).toMatch(JSON.stringify({[localId]: 1, [remoteId]: 1}));
-    }); 
+    });
+    
+    test.only('should increment a local ID in vclock with another participant', async ({page}) => {
+      const localId = await page.evaluate(async () => {
+        return window['sq'].deviceId;
+      });
+      const remoteId = nanoid(TINYSYNQ_ID_SIZE);
+      const changes = await page.evaluate(async ([remoteId]) => {
+        const sq = window['sq'];
+        const tst = window['tst'];
+        const changes = await tst.generateChangesForTable({
+          sq,
+          table: 'message',
+          origin: remoteId,
+          operation: 'UPDATE',
+        });
+      
+        sq.log.trace('@@@@ >>> GENERATED CHANGES >>> @@@@', {changes});
+
+        return changes;
+      }, [remoteId]);
+      log.trace('<<!!! CHANGES !!!>>', {changes});
+
+      const {message, originalMeta} = await page.evaluate(async ([row_id]) => {
+        const sq = window['sq'] as TinySynq;
+        const message = (
+          await sq.runQuery({
+            sql: 'SELECT * FROM message WHERE message_id = :message_id',
+            values: {message_id: row_id}
+          })
+        )[0];
+        const originalMeta = (
+          await sq.getRecordMeta({
+            table_name: 'message', row_id
+          })
+        );
+        return {message, originalMeta};
+      }, [changes[0].row_id]);
+      log.trace('<<!!! DATA !!!>>', {message, originalMeta});
+
+      const newMeta = await page.evaluate(async ([changes]) => {
+        const sq = window['sq'];
+        const tst = window['tst'];
+        await sq.applyChangesToLocalDB({ changes });
+        
+        // Change might not be immediately visible, wait a moment.
+        await tst.wait({ms: 100});
+        const meta = await sq.getRecordMeta({table_name: 'message', row_id: changes[0].row_id});
+        return meta
+      }, [changes]);
+      log.trace('<<!!! NEW META !!!>>', {newMeta});
+
+      const updateText = `Updated to ${performance.now()}`;
+      message.message_text = updateText;
+      const finalMeta = await page.evaluate(async ([message]) => {
+        const sq = window['sq'];
+        const sql = await sq.createInsertFromObject({
+          data: message,
+          table_name: 'message'
+        });
+        await sq.runQuery({sql, values: message});
+        const meta = await sq.getRecordMeta({table_name: 'message', row_id: message.message_id});
+        sq.log.warn('<<<< FINAL META >>>>', meta);
+        return meta[0];
+      }, [message]);
+      log.warn('<<<< FINAL META >>>>', finalMeta);
+
+      await closeDb(page);
+      expect(JSON.parse(finalMeta.vclock)).toMatchObject({[remoteId]: 1, [localId]: 2});
+    });
   });
 });
