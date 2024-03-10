@@ -117,7 +117,7 @@ test.describe.only('Sync', () => {
       expect(newMeta[0].vclock).toMatch(JSON.stringify({[localId]: 1, [remoteId]: 1}));
     });
     
-    test.only('should increment a local ID in vclock with another participant', async ({page}) => {
+    test('should increment a local ID in vclock with another participant', async ({page}) => {
       const localId = await page.evaluate(async () => {
         return window['sq'].deviceId;
       });
@@ -184,6 +184,68 @@ test.describe.only('Sync', () => {
 
       await closeDb(page);
       expect(JSON.parse(finalMeta.vclock)).toMatchObject({[remoteId]: 1, [localId]: 2});
+    });
+  });
+
+  test.describe.only('changes', () => {
+    test.beforeEach(async ({page}) => {
+      test.setTimeout(20000);
+  
+      await pageInit({page, log});
+      //const sq = getConfiguredDb({useDefault: true});
+      const preInit = defaultPreInit;
+  
+      await page.evaluate(setupDb, [preInit, LogLevel]);
+      await page.evaluate(postCreate);
+    });
+
+    test.only('should move to pending when received out of order', async ({page}) => {
+      const {randomMessage, pending} = await page.evaluate(async () => {
+        const sq = window['sq'];
+        const tst = window['tst'];
+        const deviceId = sq.getNewId();
+        const constraints = new Map(Object.entries({
+          'message_member_id':'member',
+        }));
+        const randomMember = (
+          await tst.getRecordOrRandom({
+            sq, table_name: 'member'
+          })
+        ).data;
+        const randomMessage = (
+          await tst.getRecordOrRandom({
+            sq, table_name: 'message'
+          })
+        ).data;
+        sq.log.trace('<<< RETRIEVED RANDOM >>>', { randomMember, randomMessage });
+        const fixed = {'message_member_id': randomMember?.member_id }
+        const changes = await tst.generateChangesForTable({
+          sq, 
+          table: 'message',
+          origin: deviceId,
+          total: 2,
+          constraints,
+          fixed,
+          operations: ['UPDATE'],
+          target: randomMessage.message_id,
+        });
+        sq.log.debug('<<<< PRE APPLY >>>>', {deviceId, randomMember, randomMessage, changes})
+        /**
+         * @TODO (?) I guess I forgot to remove this...
+         */
+        // if (changes[0].operation === 'INSERT') {
+        //   changes.reverse();
+        // }
+        changes[0].vclock[deviceId] = 2; // <- This is what makes it appear out of order
+        await sq.applyChangesToLocalDB({ changes });
+        const pending = await sq.getPending();
+
+        return {randomMember, randomMessage, pending};
+      });
+      log.debug({randomMessage, pending});
+
+      expect(pending.length).toBe(1);
+      expect(pending[0].row_id).toBe(randomMessage.message_id);
     });
   });
 });

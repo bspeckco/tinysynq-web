@@ -139,7 +139,7 @@
         // Updates and deletes need an existing record.
         if (constraints?.has(col)) {
           const t = constraints.get(col);
-          const record = tst.getRecordOrRandom({sq, table_name: t, row_id: updated[col]});
+          const record = await tst.getRecordOrRandom({sq, table_name: t, row_id: updated[col]});
           updated[col] = record.data[record.id_col];
         }
         else {
@@ -152,6 +152,40 @@
     }
     
     return updated;
+  }
+
+  /**
+   * Get a specific or random record
+   * 
+   * Retrieves either the specified `opts.row_id` from `opts.table_name`
+   * or a random record from `opts.table_name`.
+   * 
+   * @param {Object} opts - configure behaviour
+   * @param {TinySynq} opts.sq - TinySynq instance
+   * @param {string} opts.table_name - name of the table from which to grab a record 
+   * @param {string} opts.row_id - identifier of the table row 
+   * @param {boolean} opts.select - whether or not to select a random record 
+   * @returns 
+   */
+  tst.getRecordOrRandom = async ({sq, table_name, row_id, select = true}) => {
+    // Find the referenced item
+    let linkedRecord;
+    if (row_id) {
+      linkedRecord = await sq.getById({table_name, row_id});
+    }
+
+    // If it doesn't exist, pick a random one
+    if (select && !linkedRecord) {
+      linkedRecord = (
+        await sq.runQuery({
+          sql: `SELECT * FROM ${table_name} ORDER BY RANDOM() LIMIT 1 `
+        })
+      )[0];
+    }
+    if (select && !linkedRecord) throw new Error(`No records found in table: ${table_name}`);
+    const id_col = sq.getTableIdColumn({table_name});
+    console.log('@getRecordOrRandom >>>', JSON.stringify({id_col, table_name, data: linkedRecord}, null,2))
+    return {id_col, table_name, data: linkedRecord};
   }
   
   /*
@@ -213,7 +247,7 @@
         { editableTables: { [table]: columnUpdates } }
       );
       columnUpdates[randCol] = randVal;
-      const randOp = operation || operations[getRandom(operations.length)];
+      const randOp = operation || operations[tst.getRandom(operations.length)];
       const rowData = await tst.generateRowData({
         sq: sq,
         table_name: randTable,
