@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { createStatements as defaultPreInit, pageInit, postCreate, setupDb } from './setup';
 import { Logger } from 'tslog';
-import { LogLevel } from '../src/lib/types';
+import { LogLevel, TinySynqOperation } from '../src/lib/types';
 import { closeDb } from './utils';
 import { nanoid } from 'nanoid';
 
@@ -71,7 +71,7 @@ test.describe('CRUD', () => {
       const sq = window['sq'];
       const sql = `SELECT * FROM ${table_name} ORDER BY RANDOM() LIMIT 1`;
       const existing = (await sq.runQuery({sql}))[0];
-      const existingMeta = (await sq.getRecordMeta({table_name, row_id: existing.message_id}))[0];
+      const existingMeta = await sq.getRecordMeta({table_name, row_id: existing.message_id});
       const vclock = JSON.parse(existingMeta.vclock);
       vclock[sq.deviceId!] = vclock[sq.deviceId!] + 1;
 
@@ -103,7 +103,7 @@ test.describe('CRUD', () => {
     expect(deleted).toBeFalsy();
   });
   
-  test('INSERT is applied correctly', async ({page}) => {
+  test.only('INSERT is applied correctly', async ({page}) => {
     const records = await page.evaluate(postCreate);
     expect(records).toHaveLength(20); 
 
@@ -116,6 +116,7 @@ test.describe('CRUD', () => {
           sql: `SELECT * FROM member ORDER BY RANDOM() LIMIT 1`
         })
       )[0];
+      sq.log.warn({randomMember})
       if (!randomMember) return;
 
       const messageId = sq.getNewId();

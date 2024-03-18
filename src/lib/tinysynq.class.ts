@@ -652,7 +652,7 @@ export class TinySynq {
     WHERE table_name = :table_name
     AND row_id = :row_id`;
     const res = await this.runQuery({sql, values: {table_name, row_id}});
-    return res;
+    return res[0];
   }
 
   /**
@@ -698,15 +698,19 @@ export class TinySynq {
    * @returns boolean 
    */
   private async processConflictedChange<T>({ record, change }: {record: T|any, change: Change}): Promise<boolean> {
+    this.log.warn('@processConflictedChange START', record, change)
+    // INSERT won't have a local record so accept the incoming change
+    if (change.operation === TinySynqOperation.INSERT) return true;
+
     const localMeta = await this.getRecordMeta({...change});
     this.log.trace('<<<@ processConflictedChange LLW @>>>', change.id, change.table_name, change.row_id, {record, localMeta, change});
     if (change.modified > localMeta.modified) {
-      this.log.trace('<!> INTEGRATING REMOTE', change.id, change.table_name, change.row_id);
+      this.log.debug('<!> INTEGRATING REMOTE', change.id, change.table_name, change.row_id);
       // Update local with the incoming changes
       return true;
     }
     else {
-      this.log.warn('<!> KEEPING LOCAL', change.id, change.table_name, change.row_id);
+      this.log.debug('<!> KEEPING LOCAL', change.id, change.table_name, change.row_id);
       // Keep the local change, but record receipt of the record.
       return false;
     }
@@ -728,17 +732,18 @@ export class TinySynq {
     const record = await this.getRecord({table_name, row_id});
     const meta = await this.getRecordMeta({table_name, row_id});
     const local = meta?.vclock ? JSON.parse(meta.vclock) : {};
+    // If it's an insert, there won't be any meta.
+    const localTime = meta?.modified;
+    const remoteTime = change?.modified;
 
     let latest: VClock = {};
-    const localV = new VCompare({ local, remote, localId });
+    const localV = new VCompare({ local, remote, localId, localTime, remoteTime });
     let displaced = false;
     let conflicted = false;
     let stale = false;
-this.log.warn('{{{ @preProcessChange pre-if }}}', {restore, record})
 
     // If we don't have the record, treat it as new
     if (!restore && !record && change.operation !== TinySynqOperation.INSERT) {
-this.log.warn('{{{ @OutOfOrder }}}')
       reason = 'update before insert';
       await this.processOutOfOrderChange({change});
     }
@@ -834,14 +839,14 @@ this.log.warn('{{{ @OutOfOrder }}}')
   }
 
   private async updateLastSync({change}: {change: Change}) {
-    const sql = `INSERT OR REPLACE INTO ${this.synqPrefix}_meta (meta_name, meta_value) VALUES(:name, :value)`;
-    const data = [
-      { name: 'last_local_sync', value: `STRFTIME('%Y-%m-%d %H:%M:%f','NOW')`},
-      { name: 'last_sync', value: change.id }
-    ];
-    for (const values of data) {
-      await this.runQuery({sql, values});
-    };
+    await this.runQuery({
+      sql: `INSERT OR REPLACE INTO ${this.synqPrefix}_meta (meta_name, meta_value) VALUES(:name, STRFTIME('%Y-%m-%d %H:%M:%f','NOW'))`,
+      values: { name: 'last_local_sync'},
+    });
+    await this.runQuery({
+      sql: `INSERT OR REPLACE INTO ${this.synqPrefix}_meta (meta_name, meta_value) VALUES(:name, :value)`,
+      values: { name: 'last_sync', value: change.id }
+    });
   }
 
   private async applyChange({
@@ -852,10 +857,8 @@ this.log.warn('{{{ @OutOfOrder }}}')
     try {
       // Check that the changes can actually be applied
       const changeStatus = await this.preProcessChange({change, restore});
-
       if (!changeStatus?.valid) {
-        this.log.warn('>>> Invalid change status')
-        this.log.warn(changeStatus);
+        this.log.warn('>>> Invalid change', changeStatus);
         this.updateLastSync({change});
         return;
       }
@@ -877,6 +880,7 @@ this.log.warn('{{{ @OutOfOrder }}}')
       }
  
       if (!table) throw new Error(`Unable to find table ${change.table_name}`);
+
       this.log.silly('@applyChange', {change, table, changeStatus});
       switch(change.operation) {
         case 'INSERT':
@@ -899,9 +903,10 @@ this.log.warn('{{{ @OutOfOrder }}}')
       const updatedRecordMeta = await this.insertRecordMeta({change, vclock: changeStatus.vclock});
       this.log.silly({updatedRecordMeta});
     }
-    catch (error) {
+    catch (error: any) {
       await this.rollbackTransaction({savepoint})
       this.log.error(`Error applying change: ${error}. Rolled back.`, {change});
+      this.log.error(error.stack)
       throw error; // Throw the error to trigger rollback
     }
   }

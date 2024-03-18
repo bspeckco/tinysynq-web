@@ -187,6 +187,50 @@
     console.log('@getRecordOrRandom >>>', JSON.stringify({id_col, table_name, data: linkedRecord}, null,2))
     return {id_col, table_name, data: linkedRecord};
   }
+
+  /*
+  type AlterRecordMetaOptions = AlterRecordMetaBase & (
+    {
+      updates: {
+        modified: Date;
+        vclock?: VClock;
+      }
+    } | {
+      updates: {
+        modified?: Date;
+        vclock: VClock;
+      }
+    }
+  )
+  */
+  tst.alterRecordMeta = async (
+    {sq, table_name, row_id, updates}/*: AlterRecordMetaOptions*/) => {
+    const values = {
+      table_name,
+      row_id,
+    };
+    const setStatements/*: string[]*/ = [];
+    Object.keys(updates).forEach(k => {
+      setStatements.push(`${k} = :${k}`);
+      if (k === 'modified') {
+        values[k] = updates.modified.toISOString(); 
+      }
+      else if (k === 'vclock') {
+        values[k] = JSON.stringify(updates.vclock);
+      }
+    });
+    
+    const sql = `
+    UPDATE ${sq.synqPrefix}_record_meta
+    SET ${setStatements.join(',')}
+    WHERE table_name = :table_name
+    AND row_id = :row_id
+    RETURNING *`;
+    sq.log.debug({sql, values})
+  
+    const res = await sq.runQuery({sql, values});
+    return res;
+  }
   
   /*
   type GenerateChangesForTableOptions = {

@@ -9,7 +9,7 @@ import { TINYSYNQ_ID_SIZE} from '../src/lib/constants';
 
 const log = new Logger({ name: 'TinySynq Testing', minLevel: LogLevel.Debug, type: 'pretty' });
 
-test.describe.only('Sync', () => {
+test.describe('Sync', () => {
   test.describe('vclock', () => {
     test.beforeEach(async ({page}) => {
       test.setTimeout(20000);
@@ -33,11 +33,9 @@ test.describe.only('Sync', () => {
             sql: 'SELECT * FROM message LIMIT 1'
           })
         )[0];
-        const originalMeta = (
-          await sq.getRecordMeta({
-            table_name: 'message', row_id: message.message_id
-          })
-        )[0];
+        const originalMeta = await sq.getRecordMeta({
+          table_name: 'message', row_id: message.message_id
+        });
         return {message, originalMeta};
       });
       
@@ -53,7 +51,7 @@ test.describe.only('Sync', () => {
         const insertSql = sq.createInsertFromObject({data: message, table_name});
         await sq.runQuery({sql: insertSql, values: message});
         const meta = await sq.getRecordMeta({table_name, row_id: message.message_id});
-        return meta[0];
+        return meta;
       }, [message]);
 
       await closeDb(page);
@@ -68,126 +66,120 @@ test.describe.only('Sync', () => {
         return window['sq'].deviceId;
       });
       const remoteId = nanoid(TINYSYNQ_ID_SIZE);
-      const changes = await page.evaluate(async ([remoteId]) => {
+      const { changes, newMeta, originalMeta, message } = await page.evaluate(async ([remoteId]) => {
         const sq = window['sq'];
         const tst = window['tst'];
+        const randomMember = (
+          await tst.getRecordOrRandom({
+            sq, table_name: 'member'
+          })
+        ).data;
+        const randomMessage = (
+          await tst.getRecordOrRandom({
+            sq, table_name: 'message'
+          })
+        ).data;
+        const fixed = {'message_member_id': randomMember?.member_id }
+        const constraints = new Map(Object.entries({
+          'message_member_id':'member',
+        }));
         const changes = await tst.generateChangesForTable({
           sq,
           table: 'message',
           origin: remoteId,
           operation: 'UPDATE',
+          fixed,
+          constraints,
+          target: randomMessage.message_id,
         });
+        // Ensure this change is newer
+        changes[0].modified = new Date().toISOString();
       
         sq.log.trace('@@@@ >>> GENERATED CHANGES >>> @@@@', {changes});
+        const message = await sq.getRecord({
+          table_name: 'message', row_id: changes[0].row_id
+        });
+        const originalMeta = await sq.getRecordMeta({
+          table_name: 'message', row_id: changes[0].row_id
+        });
 
-        return changes;
-      }, [remoteId]);
-      log.trace('<<!!! CHANGES !!!>>', {changes});
-
-      const {message, originalMeta} = await page.evaluate(async ([row_id]) => {
-        const sq = window['sq'] as TinySynq;
-        const message = (
-          await sq.runQuery({
-            sql: 'SELECT * FROM message WHERE message_id = :message_id',
-            values: {message_id: row_id}
-          })
-        )[0];
-        const originalMeta = (
-          await sq.getRecordMeta({
-            table_name: 'message', row_id
-          })
-        );
-        return {message, originalMeta};
-      }, [changes[0].message_id]);
-      log.trace('<<!!! DATA !!!>>', {message, originalMeta});
-
-      const newMeta = await page.evaluate(async ([changes]) => {
-        const sq = window['sq'];
-        const tst = window['tst'];
-        sq.applyChangesToLocalDB({ changes });
+        await sq.applyChangesToLocalDB({ changes });
         
         // Change might not be immediately visible, wait a moment.
         await tst.wait({ms: 100});
-        const meta = sq.getRecordMeta({table_name: 'message', row_id: changes[0].row_id});
-        return meta
-      }, [changes]);
-      log.trace('<<!!! NEW META !!!>>', {newMeta});
+        const newMeta = await sq.getRecordMeta({
+          table_name: 'message', row_id: changes[0].row_id
+        });
+        return { newMeta, originalMeta, changes, message }
+      }, [remoteId]);
+
+      log.trace('<<!!! CHANGES !!!>>', {changes, message, originalMeta, newMeta});
 
       await closeDb(page);
-      expect(newMeta[0].vclock).toMatch(JSON.stringify({[localId]: 1, [remoteId]: 1}));
+      expect(newMeta.vclock).toMatch(JSON.stringify({[localId]: 1, [remoteId]: 1}));
     });
     
     test('should increment a local ID in vclock with another participant', async ({page}) => {
-      const localId = await page.evaluate(async () => {
-        return window['sq'].deviceId;
-      });
       const remoteId = nanoid(TINYSYNQ_ID_SIZE);
-      const changes = await page.evaluate(async ([remoteId]) => {
+      const updatedText = `Updated to ${performance.now()}`;
+      const {localId, finalMeta} = await page.evaluate(async ([remoteId, updatedText]) => {
         const sq = window['sq'];
         const tst = window['tst'];
+        const localId = sq.deviceId;
+        const randomMember = (
+          await tst.getRecordOrRandom({
+            sq, table_name: 'member'
+          })
+        ).data;
+        const randomMessage = (
+          await tst.getRecordOrRandom({
+            sq, table_name: 'message'
+          })
+        ).data;
+        const fixed = {'message_member_id': randomMember?.member_id }
+        const constraints = new Map(Object.entries({
+          'message_member_id':'member',
+        }));
         const changes = await tst.generateChangesForTable({
           sq,
           table: 'message',
           origin: remoteId,
+          fixed,
+          total: 1,
+          constraints,
           operation: 'UPDATE',
+          target: randomMessage.message_id
         });
+        changes[0].modified = new Date().toISOString();
       
-        sq.log.trace('@@@@ >>> GENERATED CHANGES >>> @@@@', {changes});
-
-        return changes;
-      }, [remoteId]);
-      log.trace('<<!!! CHANGES !!!>>', {changes});
-
-      const {message, originalMeta} = await page.evaluate(async ([row_id]) => {
-        const sq = window['sq'] as TinySynq;
-        const message = (
-          await sq.runQuery({
-            sql: 'SELECT * FROM message WHERE message_id = :message_id',
-            values: {message_id: row_id}
-          })
-        )[0];
-        const originalMeta = (
-          await sq.getRecordMeta({
-            table_name: 'message', row_id
-          })
-        );
-        return {message, originalMeta};
-      }, [changes[0].row_id]);
-      log.trace('<<!!! DATA !!!>>', {message, originalMeta});
-
-      const newMeta = await page.evaluate(async ([changes]) => {
-        const sq = window['sq'];
-        const tst = window['tst'];
         await sq.applyChangesToLocalDB({ changes });
         
         // Change might not be immediately visible, wait a moment.
         await tst.wait({ms: 100});
         const meta = await sq.getRecordMeta({table_name: 'message', row_id: changes[0].row_id});
-        return meta
-      }, [changes]);
-      log.trace('<<!!! NEW META !!!>>', {newMeta});
 
-      const updateText = `Updated to ${performance.now()}`;
-      message.message_text = updateText;
-      const finalMeta = await page.evaluate(async ([message]) => {
-        const sq = window['sq'];
+        const message = await sq.getRecord({
+          table_name: 'message', row_id: changes[0].row_id
+        });
+        const originalMeta = await sq.getRecordMeta({
+          table_name: 'message', row_id: changes[0].row_id
+        });
+        message.message_text = updatedText;
         const sql = await sq.createInsertFromObject({
           data: message,
           table_name: 'message'
         });
         await sq.runQuery({sql, values: message});
-        const meta = await sq.getRecordMeta({table_name: 'message', row_id: message.message_id});
-        sq.log.warn('<<<< FINAL META >>>>', meta);
-        return meta[0];
-      }, [message]);
-      log.warn('<<<< FINAL META >>>>', finalMeta);
+        const finalMeta = await sq.getRecordMeta({table_name: 'message', row_id: message.message_id});
+        return {changes, message, meta, localId, finalMeta}
+      }, [remoteId, updatedText]);
 
       await closeDb(page);
       expect(JSON.parse(finalMeta.vclock)).toMatchObject({[remoteId]: 1, [localId]: 2});
     });
   });
 
-  test.describe.only('changes', () => {
+  test.describe('changes', () => {
     test.beforeEach(async ({page}) => {
       test.setTimeout(20000);
   
@@ -199,8 +191,58 @@ test.describe.only('Sync', () => {
       await page.evaluate(postCreate);
     });
 
-    test.only('should move to pending when received out of order', async ({page}) => {
+    test('should move to pending when received out of order', async ({page}) => {
       const {randomMessage, pending} = await page.evaluate(async () => {
+        const sq = window['sq'];
+        const tst = window['tst'];
+        const deviceId = sq.getNewId();
+        const randomMember = (
+          await tst.getRecordOrRandom({
+            sq, table_name: 'member'
+          })
+        ).data;
+        const randomMessage = (
+          await tst.getRecordOrRandom({
+            sq, table_name: 'message'
+          })
+        ).data;
+        sq.log.trace('<<< RETRIEVED RANDOM >>>', { randomMember, randomMessage });
+        const fixed = {'message_member_id': randomMember?.member_id }
+        const constraints = new Map(Object.entries({
+          'message_member_id':'member',
+        }));
+        const changes = await tst.generateChangesForTable({
+          sq, 
+          table: 'message',
+          origin: deviceId,
+          total: 2,
+          constraints,
+          fixed,
+          operations: ['UPDATE'],
+          target: randomMessage.message_id,
+        });
+        sq.log.debug('<<<< PRE APPLY >>>>', {deviceId, randomMember, randomMessage, changes})
+        /**
+         * @TODO (?) I guess I forgot to remove this... (requires a check first)
+         */
+        // if (changes[0].operation === 'INSERT') {
+        //   changes.reverse();
+        // }
+        changes[0].vclock[deviceId] = 2; // <- This is what makes it appear out of order
+        await sq.applyChangesToLocalDB({ changes });
+        const pending = await sq.getPending();
+
+        return {randomMember, randomMessage, pending};
+      });
+      log.debug({randomMessage, pending});
+
+      await closeDb(page);
+      expect(pending.length).toBe(1);
+      expect(pending[0].row_id).toBe(randomMessage.message_id);
+    });
+
+    test('should move to pending when attempting to update non-existent record', async({page}) => {
+      const pending = await page.evaluate(async () => {
         const sq = window['sq'];
         const tst = window['tst'];
         const deviceId = sq.getNewId();
@@ -218,34 +260,153 @@ test.describe.only('Sync', () => {
           })
         ).data;
         sq.log.trace('<<< RETRIEVED RANDOM >>>', { randomMember, randomMessage });
+        const target = sq.getNewId();
         const fixed = {'message_member_id': randomMember?.member_id }
         const changes = await tst.generateChangesForTable({
           sq, 
           table: 'message',
           origin: deviceId,
-          total: 2,
+          total: 1,
           constraints,
           fixed,
           operations: ['UPDATE'],
           target: randomMessage.message_id,
         });
-        sq.log.debug('<<<< PRE APPLY >>>>', {deviceId, randomMember, randomMessage, changes})
-        /**
-         * @TODO (?) I guess I forgot to remove this...
-         */
-        // if (changes[0].operation === 'INSERT') {
-        //   changes.reverse();
-        // }
-        changes[0].vclock[deviceId] = 2; // <- This is what makes it appear out of order
+        sq.log.debug('<<<< PRE APPLY >>>>', {deviceId, randomMember, randomMessage, changes});
+
+        // Slow way for now, smart way later
+        changes[0].row_id = target;
+        const modifiedRowData = JSON.parse(changes[0].data);
+        modifiedRowData.message_id = target;
+        changes[0].data = JSON.stringify(modifiedRowData);
+
         await sq.applyChangesToLocalDB({ changes });
         const pending = await sq.getPending();
-
-        return {randomMember, randomMessage, pending};
+        return pending;
       });
-      log.debug({randomMessage, pending});
 
+      await closeDb(page);
       expect(pending.length).toBe(1);
-      expect(pending[0].row_id).toBe(randomMessage.message_id);
+    });
+
+    test('when conflicted should keep REMOTE changes if they are newer', async ({page}) => {
+      const {updatedRecord, incoming} = await page.evaluate(async () => {
+        const sq = window['sq'];
+        const tst = window['tst'];
+        const deviceId = sq.getNewId();
+        const constraints = new Map(Object.entries({
+          'message_member_id':'member',
+        }));
+        const randomMember = (
+          await tst.getRecordOrRandom({
+            sq, table_name: 'member'
+          })
+        ).data;
+        const randomMessage = (
+          await tst.getRecordOrRandom({
+            sq, table_name: 'message'
+          })
+        ).data;
+        const metaParams = {
+          table_name: 'message',
+          row_id: randomMessage.message_id
+        };
+        const currentMeta = sq.getRecordMeta(metaParams);
+        const alteredMeta = await tst.alterRecordMeta({
+          sq,
+          ...metaParams,
+          updates: {
+            modified: tst.getRandomDateTime({asString: false}) as Date,
+            vclock: {[sq.deviceId!]: 1}
+          }
+        });
+        sq.log.warn({currentMeta, alteredMeta, randomMessage});
+        const target = randomMessage.message_id;
+        const fixed = {'message_member_id': randomMember?.member_id }
+        
+        await tst.wait(100) // Ensure it ends up with a newer timestamp
+
+        const changes = await tst.generateChangesForTable({
+          sq, 
+          table: 'message',
+          origin: deviceId,
+          total: 1,
+          constraints,
+          fixed,
+          target,
+          operations: ['UPDATE'],
+        });
+        
+        changes[0].vclock[sq.deviceId] = 0;
+        await sq.applyChangesToLocalDB({ changes });
+
+        const updatedRecord = await sq.getById(metaParams);
+        const incoming = JSON.parse(changes[0].data);
+
+        return {updatedRecord, incoming};
+      });
+
+      await closeDb(page);
+      expect(updatedRecord.message_text).toEqual(incoming.message_text);
+      expect(updatedRecord.message_updated).toEqual(incoming.message_updated);
+    });
+
+    test('when conflicted should keep LOCAL changes if they are newer', async ({page}) => {
+      const {
+        randomMessage, messageMeta, updatedRecord, updatedMeta, lastSyncBefore, lastSyncAfter
+      } = await page.evaluate(async () => {
+        const sq = window['sq'];
+        const tst = window['tst'];
+        const deviceId = sq.getNewId();
+        const constraints = new Map(Object.entries({
+          'message_member_id':'member',
+        }));
+        const randomMember = (
+          await tst.getRecordOrRandom({
+            sq, table_name: 'member'
+          })
+        ).data;
+        const randomMessage = (
+          await tst.getRecordOrRandom({
+            sq, table_name: 'message'
+          })
+        ).data;
+        const metaParams = {
+          table_name: 'message',
+          row_id: randomMessage.message_id
+        };
+        const messageMeta = await sq.getRecordMeta(metaParams);
+        const lastSyncBefore = await sq.getLastSync();
+        const target = randomMessage.message_id;
+        const fixed = {'message_member_id': randomMember.member_id }
+        const changes = await tst.generateChangesForTable({
+          sq, 
+          table: 'message',
+          origin: deviceId,
+          total: 1,
+          constraints,
+          fixed,
+          target,
+          operations: ['UPDATE'],
+        });
+        sq.log.warn('<<< CHANGES PRE >>>', changes, randomMessage)
+        // Make the incoming change older to simulate stale change
+        changes[0].modified = tst.getRandomDateTime();
+        sq.log.warn('<<< CHANGES POST >>>', changes, randomMessage)
+        await sq.applyChangesToLocalDB({ changes });
+        
+        const updatedRecord = await sq.getById(metaParams);
+        const updatedMeta = await sq.getRecordMeta(metaParams);
+        const lastSyncAfter = await sq.getLastSync();
+
+        return {randomMessage, messageMeta, updatedRecord, updatedMeta, lastSyncBefore, lastSyncAfter};
+      });
+      log.warn({updatedRecord, randomMessage, updatedMeta, messageMeta});
+
+      await closeDb(page);
+      expect(updatedRecord).toMatchObject(randomMessage);
+      expect(updatedMeta).toEqual(messageMeta);
+      expect(lastSyncBefore).not.toEqual(lastSyncAfter);
     });
   });
 });
