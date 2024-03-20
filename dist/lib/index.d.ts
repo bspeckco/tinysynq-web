@@ -8,5 +8,5 @@ import { TinySynqOptions } from "./types.js";
  *
  * @public
  */
-declare const setupDatabase: (config: TinySynqOptions) => Promise<TinySynq>;
-export default setupDatabase;
+declare const initTinySynq: (config: TinySynqOptions) => Promise<TinySynq>;
+export default initTinySynq;

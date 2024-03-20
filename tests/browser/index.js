@@ -1,6 +1,6 @@
 (async () => {
   const mod = await import('http://localhost:8181/tinysynq.module.js');
-  window.tinysynq = mod?.default;
+  window.tinysynq = mod?.initTinySynq;
   console.log('@@ MODULE @@', !!mod.default);
 
   const tst = {};
@@ -324,6 +324,8 @@
         row_id: rowData[idCol],
         operation: randOp, //as TinySynqOperation,
         data: JSON.stringify(rowData),
+        source: origin,
+        mod: vclock[origin],
         vclock,
         modified: sq.utils.utcNowAsISO8601()
       };

@@ -1,6 +1,7 @@
-import lib from './lib/index.js';
+import initTinySynq from './lib/index.js';
+import { TinySynqClient } from './lib/client.js';
 
-export default lib;
+export { TinySynqClient, initTinySynq };
 
 export type { 
   SyncableTable,

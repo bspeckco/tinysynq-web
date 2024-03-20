@@ -9,12 +9,13 @@
 |  Class | Description |
 |  --- | --- |
 |  [TinySynq](./tinysynq-web.tinysynq.md) | The main class for managing SQLite3 synchronisation. |
+|  [TinySynqClient](./tinysynq-web.tinysynqclient.md) |  |
 
 ## Functions
 
 |  Function | Description |
 |  --- | --- |
-|  [setupDatabase(config)](./tinysynq-web.setupdatabase.md) | Returns a configured instance of TinySynq |
+|  [initTinySynq(config)](./tinysynq-web.inittinysynq.md) | Returns a configured instance of TinySynq |
 
 ## Interfaces
 

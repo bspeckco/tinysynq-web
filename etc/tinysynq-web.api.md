@@ -4,6 +4,8 @@
 
 ```ts
 
+/// <reference types="bun-types" />
+
 import { ILogObj } from 'tslog';
 import { ISettingsParam } from 'tslog';
 
@@ -26,15 +28,14 @@ export type GetTableIdColumnParams = {
 };
 
 // @public
+export const initTinySynq: (config: TinySynqOptions) => Promise<TinySynq>;
+
+// @public
 export type QueryParams = {
     sql: string;
     values?: any;
     prefix?: string;
 };
-
-// @public
-const setupDatabase: (config: TinySynqOptions) => Promise<TinySynq>;
-export default setupDatabase;
 
 // @public
 export type SQLiteWASM = any;
@@ -80,6 +81,8 @@ export class TinySynq {
         columns?: string[];
     }): Promise<Change[]>;
     getDeviceId(): Promise<string>;
+    // Warning: (ae-forgotten-export) The symbol "LatestChangesOptions" needs to be exported by the entry point index.d.ts
+    getFilteredChanges(opts?: LatestChangesOptions): Promise<any>;
     getLastSync(): Promise<string>;
     getNewId(): string;
     getPending(): Promise<any>;
@@ -113,6 +116,24 @@ export class TinySynq {
     // Warning: (ae-forgotten-export) The symbol "Utils" needs to be exported by the entry point index.d.ts
     readonly utils: Utils;
     get wal(): boolean;
+}
+
+// @public (undocumented)
+export class TinySynqClient {
+    // Warning: (ae-forgotten-export) The symbol "TinySynqClientConfig" needs to be exported by the entry point index.d.ts
+    constructor(config: TinySynqClientConfig);
+    // (undocumented)
+    connect(): Promise<WebSocket>;
+    // (undocumented)
+    isOpenOrConnecting(): boolean | undefined;
+    // (undocumented)
+    get serverUrl(): string;
+    // (undocumented)
+    sync(): Promise<void>;
+    // (undocumented)
+    get ts(): TinySynq;
+    // (undocumented)
+    get ws(): WebSocket | undefined;
 }
 
 // Warning: (ae-forgotten-export) The symbol "TinySynqOptionsWithInstance" needs to be exported by the entry point index.d.ts

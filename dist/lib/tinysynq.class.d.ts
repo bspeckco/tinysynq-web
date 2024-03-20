@@ -1,4 +1,4 @@
-import { Change, QueryParams, TinySynqOptions, SyncableTable, TableNameRowParams } from './types.js';
+import { Change, QueryParams, TinySynqOptions, SyncableTable, TableNameRowParams, LatestChangesOptions } from './types.js';
 /**
  * Basic utilities, mainly date-oriented.
  */
@@ -31,6 +31,7 @@ export declare class TinySynq {
     private _synqTables?;
     private _synqBatchSize;
     private _wal;
+    private _server;
     private log;
     /**
      * Basic Helpers.
@@ -338,5 +339,11 @@ export declare class TinySynq {
         changes: Change[];
         restore?: boolean;
     }): Promise<void>;
+    /**
+     * Get items that have been recently changed.
+     *
+     * @param opts
+     */
+    getFilteredChanges(opts?: LatestChangesOptions): Promise<any>;
     tablesReady(): Promise<void>;
 }

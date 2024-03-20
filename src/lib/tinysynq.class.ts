@@ -1,5 +1,5 @@
 import { sqlite3Worker1Promiser } from '@sqlite.org/sqlite-wasm';
-import { ApplyChangeParams, Change, LogLevel, QueryParams, TinySynqOperation, TinySynqOptions, SyncableTable, TableNameRowParams, VClock } from './types.js';
+import { ApplyChangeParams, Change, LogLevel, QueryParams, TinySynqOperation, TinySynqOptions, SyncableTable, TableNameRowParams, VClock, LatestChangesOptions } from './types.js';
 import { Logger, ILogObj } from 'tslog';
 import { VCompare } from './vcompare.class.js';
 import { nanoid } from 'nanoid';
@@ -52,6 +52,7 @@ export class TinySynq {
   private _synqTables?: Record<string, SyncableTable>;
   private _synqBatchSize: number = 20;
   private _wal = true;
+  private _server: any;
   private log: Logger<ILogObj>;
 
   /**
@@ -65,7 +66,7 @@ export class TinySynq {
     strtimeAsISO8601,
     nowAsISO8601: strtimeAsISO8601,
     utcNowAsISO8601: (): string => {
-      return new Date((new Date()).toUTCString()).toISOString();
+      return new Date().toISOString().replace('Z', '');
     }
   }
 
@@ -367,7 +368,8 @@ export class TinySynq {
           bind: values,
           callback: (result: any) => {
             if (!result.row) {
-              this.log.debug('@runQuery RESOLVED', quid);
+              this.log.debug('@runQuery RESOLVED', results.length, quid);
+              this.log.trace(sql, values);
               return resolve(results as any);
             }
             const o: any = {};
@@ -450,7 +452,7 @@ export class TinySynq {
    */
   async getChanges(params?: {lastLocalSync?: string, columns?: string[]}): Promise<Change[]> {
     let lastLocalSync: string = params?.lastLocalSync || await this.getLastSync();
-    let { columns = [] } = params || {};
+    let { columns = ['c.*', 'trm.vclock'] } = params || {};
     this.log.debug('@getChanges', lastLocalSync);
   
     let where: string = '';
@@ -470,6 +472,7 @@ export class TinySynq {
       ${where}
       ORDER BY c.modified ASC
     `;
+    console.log('@SQL', sql)
     const values = lastLocalSync ? [lastLocalSync] : [];
     this.log.debug(sql, values);
   
@@ -618,19 +621,21 @@ export class TinySynq {
 
   async insertRecordMeta({change, vclock}: any) {
     this.log.warn('<<< @insertRecordMeta >>>', {change, vclock});
-    const { table_name, row_id } = change;
+    const { table_name, row_id, source } = change;
     const mod = vclock[this._deviceId!] || 0;
     const values = {
       table_name,
       row_id,
       mod,
-      vclock: JSON.stringify(vclock)
+      source,
+      vclock: JSON.stringify(vclock),
+      modified: this.utils.utcNowAsISO8601(),
     };
     return this.runQuery({
       sql: `
-      INSERT INTO ${this._synqPrefix}_record_meta (table_name, row_id, mod, vclock)
-      VALUES (:table_name, :row_id, :mod, :vclock)
-      ON CONFLICT DO UPDATE SET mod = :mod, vclock = :vclock
+      INSERT INTO ${this._synqPrefix}_record_meta (table_name, row_id, source, mod, vclock)
+      VALUES (:table_name, :row_id, :source, :mod, :vclock)
+      ON CONFLICT DO UPDATE SET source = :source, mod = :mod, vclock = :vclock, modified = :modified
       RETURNING *
       `,
       values,
@@ -934,6 +939,36 @@ export class TinySynq {
     await this.enableTriggers();
     this.log.silly(`Applied ${changes.length} change(s)`);
   };
+
+  /**
+   * Get items that have been recently changed.
+   * 
+   * @param opts 
+   */
+  getFilteredChanges(opts?: LatestChangesOptions) {
+    let and: string[] = [];
+    let values: any = {};
+    if (opts?.exclude) {
+      and.push('source != :exclude');
+      values.exclude = opts.exclude;
+    }
+    if (opts?.checkpoint) {
+      and.push('id > :checkpoint');
+      values.checkpoint = opts.checkpoint;
+    }
+    else if (opts?.since) {
+      and.push('modified > :since');
+      values.since = opts.since
+    }
+    const sql = `
+    SELECT id, table_name, row_id, data, operation, source, vclock, modified
+    FROM ${this.synqPrefix}_changes
+    WHERE 1=1
+    ${and.join(' AND ')}
+    ORDER BY modified ASC`;
+
+    return this.runQuery({sql, values});
+  }
 
   async tablesReady(): Promise<void> {
     await this.enableTriggers();

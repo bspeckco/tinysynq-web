@@ -1,6 +1,3 @@
-import type { TinySynq } from "../src/lib/tinysynq.class";
-import { nanoid } from 'nanoid';
-import { getRandomDbPath } from "./utils";
 import { TinySynqOptions } from "../src/lib/types";
 
 export type TestWindow = Window & {
@@ -33,9 +30,6 @@ export const postCreate = async () => {
   const sq = window['sq'];
   
   // Create some records
-  //const savepoint = await sq.beginTransaction();
-
-  //console.debug('::: BEGINNING TRANSACTION:', sq.constructor.name); 
   try {
     for (let i = 0; i < 20; i++) {
       const id = sq.getNewId();
@@ -58,7 +52,6 @@ export const postCreate = async () => {
         values: { message_id: id, message_text: `${id} message text ${Date.now()}` }
       });
     }
-    //await sq.commitTransaction({ savepoint });
     const result = await sq.runQuery({
       sql: `SELECT * FROM message`
     });
@@ -66,8 +59,7 @@ export const postCreate = async () => {
     return result;
   }
   catch(err) {
-    console.error('::: TRANSACTION FAILED!', err);
-    //await sq.rollbackTransaction({ savepoint });
+    console.error('::: POST-CREATE INSERTS FAILED!', err);
     throw err;
   }
 };
@@ -81,12 +73,14 @@ export const pageInit = async ({page, log}) => {
 }
 
 export const setupDb = async (args: any[]) => {
+  if (window['sq']) return window['sq'].deviceId;
+
   const [preInit, LogLevel] = args;
   const { tinysynq } = window as TestWindow;
   const randVal = Math.ceil(Math.random() * 1000);
   const filePath = `tst_${randVal}.db`;
   const prefix = `tst_${randVal}`;
-console.log('<<<< SETUP >>>>',{filePath, prefix})
+  
   try {
     window['sq'] = await tinysynq({
       filePath,

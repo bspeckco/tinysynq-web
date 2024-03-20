@@ -1,19 +1,18 @@
 import { test, expect } from '@playwright/test';
 import { createStatements as defaultPreInit, pageInit, postCreate, setupDb } from './setup';
 import { Logger } from 'tslog';
-import { LogLevel, TinySynqOperation } from '../src/lib/types';
+import { LogLevel } from '../src/lib/types';
 import { closeDb } from './utils';
 import { nanoid } from 'nanoid';
 
-const log = new Logger({ name: 'TinySynq Testing', minLevel: LogLevel.Debug, type: 'pretty' });
+const log = new Logger({ name: 'TinySynq Testing', minLevel: LogLevel.Info, type: 'pretty' });
 
 test.describe('CRUD', () => {
 
   test.beforeEach(async ({page}) => {
-    test.setTimeout(20000);
+    test.setTimeout(5000);
 
     await pageInit({page, log});
-    //const sq = getConfiguredDb({useDefault: true});
     const preInit = defaultPreInit;
 
     await page.evaluate(setupDb, [preInit, LogLevel]);
@@ -28,8 +27,9 @@ test.describe('CRUD', () => {
     const updated = await page.evaluate(async ([updateText]) => {
       const table = 'message';
       const sq = window['sq'];
-      // Simulate changes
+      const tst = window['tst'];
 
+      // Simulate changes
       const sql = `SELECT * FROM ${table} ORDER BY RANDOM() LIMIT 1`;
       const random = (await sq.runQuery({sql}))[0];
 
@@ -46,10 +46,16 @@ test.describe('CRUD', () => {
           operation: 'UPDATE',
           data: JSON.stringify({message_id: random.message_id, message_text: updateText }),
           modified: sq.utils.utcNowAsISO8601(),
-          vclock: {[sq.deviceId!]: 2}
+          source: sq.deviceId,
+          mod: 2,
+          vclock: {[sq.deviceId]: 2}
         },
       ];
+      sq.log.warn('\n@@@ changes @@@', changes, '\n@@@ /changes @@@')
       await sq.applyChangesToLocalDB({changes});
+
+      await tst.wait(500);
+
       // Verify changes were applied
       const updated: any = (
         await sq.runQuery({sql: 'SELECT * FROM message WHERE message_id = :message_id', values: {message_id: random.message_id}})
@@ -84,6 +90,8 @@ test.describe('CRUD', () => {
           operation: 'DELETE',
           data: JSON.stringify({ name: `Deleted message` }),
           modified: sq.utils.utcNowAsISO8601(),
+          source: sq.deviceId,
+          mod: vclock[sq.deviceId],
           vclock,
         },
       ];
@@ -103,7 +111,7 @@ test.describe('CRUD', () => {
     expect(deleted).toBeFalsy();
   });
   
-  test.only('INSERT is applied correctly', async ({page}) => {
+  test('INSERT is applied correctly', async ({page}) => {
     const records = await page.evaluate(postCreate);
     expect(records).toHaveLength(20); 
 
@@ -135,6 +143,8 @@ test.describe('CRUD', () => {
             message_deleted: null 
           }),
           modified: sq.utils.utcNowAsISO8601(),
+          source: sq.deviceId,
+          mod: 1,
           vclock: {[sq.deviceId!]: 1}
         },
       ];

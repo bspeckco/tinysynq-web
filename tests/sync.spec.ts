@@ -12,7 +12,7 @@ const log = new Logger({ name: 'TinySynq Testing', minLevel: LogLevel.Debug, typ
 test.describe('Sync', () => {
   test.describe('vclock', () => {
     test.beforeEach(async ({page}) => {
-      test.setTimeout(20000);
+      test.setTimeout(5000);
   
       await pageInit({page, log});
       //const sq = getConfiguredDb({useDefault: true});
@@ -93,7 +93,7 @@ test.describe('Sync', () => {
           target: randomMessage.message_id,
         });
         // Ensure this change is newer
-        changes[0].modified = new Date().toISOString();
+        changes[0].modified = sq.utils.utcNowAsISO8601();
       
         sq.log.trace('@@@@ >>> GENERATED CHANGES >>> @@@@', {changes});
         const message = await sq.getRecord({
@@ -181,7 +181,7 @@ test.describe('Sync', () => {
 
   test.describe('changes', () => {
     test.beforeEach(async ({page}) => {
-      test.setTimeout(20000);
+      test.setTimeout(5000);
   
       await pageInit({page, log});
       //const sq = getConfiguredDb({useDefault: true});

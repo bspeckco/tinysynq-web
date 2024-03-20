@@ -1,5 +1,22 @@
+/// <reference types="bun-types" />
+
 import { ILogObj } from 'tslog';
 import { ISettingsParam } from 'tslog';
+
+declare interface BaseLatestChangesOptions {
+    /**
+     * A device ID whose changes should be excluded from retrieval (usually the requester).
+     */
+    exclude: string;
+    /**
+     * An ISO8601 date string. Providing this will limit retrieved changes to this date/time onwards.
+     */
+    since: string;
+    /**
+     * A
+     */
+    checkpoint: number;
+}
 
 /**
  * Object transferred between devices to convey individual record changes.
@@ -47,6 +64,37 @@ export declare type GetTableIdColumnParams = {
 };
 
 /**
+ * Returns a configured instance of TinySynq
+ *
+ * @param config - Configuration object
+ * @returns TinySynq instance
+ *
+ * @public
+ */
+export declare const initTinySynq: (config: TinySynqOptions) => Promise<TinySynq>;
+
+declare type LatestChangesOptions = LatestChangesWithSince | LatestChangesWithCheckpoint;
+
+declare interface LatestChangesWithCheckpoint extends BaseLatestChangesOptions {
+    /**
+     * A server-specific change ID.
+     *
+     * @remarks
+     *
+     * When provided it will limit retrieved changes to those _after_ the specified change ID.
+     * The change ID is specific to the hub/root server (of which there should be only one).
+     */
+    checkpoint: number;
+}
+
+declare interface LatestChangesWithSince extends BaseLatestChangesOptions {
+    /**
+     * An ISO8601 date string. Providing this will limit retrieved changes to this date/time onwards.
+     */
+    since: string;
+}
+
+/**
  * Basic query params for methods that read from/write to DB.
  *
  * @public
@@ -56,17 +104,6 @@ export declare type QueryParams = {
     values?: any;
     prefix?: string;
 };
-
-/**
- * Returns a configured instance of TinySynq
- *
- * @param config - Configuration object
- * @returns TinySynq instance
- *
- * @public
- */
-declare const setupDatabase: (config: TinySynqOptions) => Promise<TinySynq>;
-export default setupDatabase;
 
 /**
  * A {@link https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md | BetterSqlite3} instance.
@@ -119,6 +156,7 @@ export declare class TinySynq {
     private _synqTables?;
     private _synqBatchSize;
     private _wal;
+    private _server;
     private log;
     /**
      * Basic Helpers.
@@ -426,7 +464,53 @@ export declare class TinySynq {
         changes: Change[];
         restore?: boolean;
     }): Promise<void>;
+    /**
+     * Get items that have been recently changed.
+     *
+     * @param opts
+     */
+    getFilteredChanges(opts?: LatestChangesOptions): Promise<any>;
     tablesReady(): Promise<void>;
+}
+
+export declare class TinySynqClient {
+    private _config;
+    private _serverUrl;
+    private _ts;
+    private _ws;
+    get serverUrl(): string;
+    get ts(): TinySynq;
+    get ws(): WebSocket | undefined;
+    constructor(config: TinySynqClientConfig);
+    isOpenOrConnecting(): boolean | undefined;
+    connect(): Promise<WebSocket>;
+    sync(): Promise<void>;
+    private handleMessage;
+}
+
+declare interface TinySynqClientConfig {
+    /**
+     * Initialised TinySynq instance.
+     */
+    ts: TinySynq;
+    /**
+     * The domain or IP address (no protocol or port).
+     *
+     * @default localhost
+     */
+    hostname?: string;
+    /**
+     * The port number on which to connect.
+     *
+     * @default 7174
+     */
+    port?: number;
+    /**
+     * Whether or not it should a secure connection (wss://)
+     *
+     * @default false
+     */
+    secure?: boolean;
 }
 
 declare enum TinySynqOperation {

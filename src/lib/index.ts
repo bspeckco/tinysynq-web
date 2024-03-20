@@ -10,7 +10,7 @@ import { TinySynqOptions, SyncableTable } from "./types.js";
  * 
  * @public
  */
-const setupDatabase = async (config: TinySynqOptions) => {
+const initTinySynq = async (config: TinySynqOptions) => {
   const {
     tables,
     preInit,
@@ -22,13 +22,13 @@ const setupDatabase = async (config: TinySynqOptions) => {
   if (!tables?.length) throw new Error('Syncable table data required');
 
   const log = new Logger({ name: 'tinysynq-setup', ...logOptions});
-  const db = new TinySynq(config);
+  const ts = new TinySynq(config);
 
   /**
    * Pretty important: make sure to call `init()` :-)
    */
 
-  await db.init();
+  await ts.init();
 
   const getRecordMetaInsertQuery = ({table, remove = false}: {table: SyncableTable, remove?: boolean}) => {
     /* 
@@ -53,28 +53,48 @@ const setupDatabase = async (config: TinySynqOptions) => {
     */
     const version = remove ? 'OLD' : 'NEW';
     const sql = `
-    INSERT INTO ${db.synqPrefix}_record_meta (table_name, row_id, mod, vclock)
-    SELECT table_name, row_id, mod, vclock
+    INSERT INTO ${ts.synqPrefix}_record_meta (table_name, row_id, source, mod, vclock)
+    SELECT table_name, row_id, source, mod, vclock
     FROM (
       SELECT
         1 as peg,
         '${table.name}' as table_name,
         ${version}.${table.id} as row_id, 
-        IFNULL(json_extract(vclock,'$.${db.deviceId}'), 0) + 1 as mod, 
-        json_set(IFNULL(json_extract(vclock, '$'),'{}'), '$.${db.deviceId}', IFNULL(json_extract(vclock,'$.${db.deviceId}'), 0) + 1) as vclock
-      FROM ${db.synqPrefix}_record_meta
+        '${ts.deviceId}' as source, 
+        IFNULL(json_extract(vclock,'$.${ts.deviceId}'), 0) + 1 as mod, 
+        json_set(IFNULL(json_extract(vclock, '$'),'{}'), '$.${ts.deviceId}', IFNULL(json_extract(vclock,'$.${ts.deviceId}'), 0) + 1) as vclock
+      FROM ${ts.synqPrefix}_record_meta
       WHERE table_name = '${table.name}'
       AND row_id = ${version}.${table.id}
       UNION
-      SELECT 0 as peg, '${table.name}' as table_name, ${version}.${table.id} as row_id, 1, json_object('${db.deviceId}', 1) as vclock
+      SELECT 0 as peg, '${table.name}' as table_name, ${version}.${table.id} as row_id, '${ts.deviceId}' as source, 1, json_object('${ts.deviceId}', 1) as vclock
     )
     ORDER BY peg DESC
     LIMIT 1
     ON CONFLICT DO UPDATE SET
-      mod = json_extract(excluded.vclock,'$.${db.deviceId}'),
-      vclock = json_extract(excluded.vclock,'$')
+      source = '${ts.deviceId}',
+      mod = json_extract(excluded.vclock,'$.${ts.deviceId}'),
+      vclock = json_extract(excluded.vclock,'$'),
+      modified = '${ts.utils.utcNowAsISO8601().replace('Z', '')}'
     ;`;
     log.silly(sql);
+    return sql;
+  }
+
+  const getChangeUpdateQuery = ({table, remove = false}: {table: SyncableTable, remove?: boolean}) => {
+    const version = remove ? 'OLD' : 'NEW';
+    const sql = `
+      UPDATE ${ts.synqPrefix}_changes
+      SET vclock = trm.vclock, source = trm.source
+      FROM (
+        SELECT vclock, source
+        FROM ${ts.synqPrefix}_record_meta
+        WHERE table_name = '${table.name}'
+        AND row_id = ${version}.${table.id}
+      ) AS trm
+      WHERE table_name = '${table.name}'
+      AND row_id = ${version}.${table.id};
+    `;
     return sql;
   }
 
@@ -82,7 +102,7 @@ const setupDatabase = async (config: TinySynqOptions) => {
     log.debug('Setting up triggers for', table.name);
 
     // Template for inserting the new value as JSON in the `*_changes` table.
-    const jsonObject = (await db.runQuery<any>({
+    const jsonObject = (await ts.runQuery<any>({
       sql:`
       SELECT 'json_object(' || GROUP_CONCAT('''' || name || ''', NEW.' || name, ',') || ')' AS jo
       FROM pragma_table_info('${table.name}');`
@@ -95,47 +115,53 @@ const setupDatabase = async (config: TinySynqOptions) => {
      */
 
     // Ensure triggers are up to date
-    await db.run({sql: `DROP TRIGGER IF EXISTS ${db.synqPrefix}_after_insert_${table.name}`});
-    await db.run({sql: `DROP TRIGGER IF EXISTS ${db.synqPrefix}_after_update_${table.name}`});
-    await db.run({sql: `DROP TRIGGER IF EXISTS ${db.synqPrefix}_after_delete_${table.name}`});
+    await ts.run({sql: `DROP TRIGGER IF EXISTS ${ts.synqPrefix}_after_insert_${table.name}`});
+    await ts.run({sql: `DROP TRIGGER IF EXISTS ${ts.synqPrefix}_after_update_${table.name}`});
+    await ts.run({sql: `DROP TRIGGER IF EXISTS ${ts.synqPrefix}_after_delete_${table.name}`});
 
     const sql = `
-      CREATE TRIGGER IF NOT EXISTS ${db.synqPrefix}_after_insert_${table.name}
+      CREATE TRIGGER IF NOT EXISTS ${ts.synqPrefix}_after_insert_${table.name}
       AFTER INSERT ON ${table.name}
       FOR EACH ROW
-      WHEN (SELECT meta_value FROM ${db.synqPrefix}_meta WHERE meta_name = 'triggers_on')='1'
+      WHEN (SELECT meta_value FROM ${ts.synqPrefix}_meta WHERE meta_name = 'triggers_on')='1'
       BEGIN
-        INSERT INTO ${db.synqPrefix}_changes (table_name, row_id, operation, data)
+        INSERT INTO ${ts.synqPrefix}_changes (table_name, row_id, operation, data)
         VALUES ('${table.name}', NEW.${table.id}, 'INSERT', ${jsonObject.jo});
 
         ${getRecordMetaInsertQuery({table})}
-      END;`
-    await db.run({sql});
 
-    await db.run({
+        ${getChangeUpdateQuery({table})}
+      END;`
+    await ts.run({sql});
+
+    await ts.run({
       sql:`
-      CREATE TRIGGER IF NOT EXISTS ${db.synqPrefix}_after_update_${table.name}
+      CREATE TRIGGER IF NOT EXISTS ${ts.synqPrefix}_after_update_${table.name}
       AFTER UPDATE ON ${table.name}
       FOR EACH ROW
-      WHEN (SELECT meta_value FROM ${db.synqPrefix}_meta WHERE meta_name = 'triggers_on')='1'
+      WHEN (SELECT meta_value FROM ${ts.synqPrefix}_meta WHERE meta_name = 'triggers_on')='1'
       BEGIN
-        INSERT INTO ${db.synqPrefix}_changes (table_name, row_id, operation, data)
+        INSERT INTO ${ts.synqPrefix}_changes (table_name, row_id, operation, data)
         VALUES ('${table.name}', NEW.${table.id}, 'UPDATE', ${jsonObject.jo});
 
         ${getRecordMetaInsertQuery({table})}
+
+        ${getChangeUpdateQuery({table})}
       END;`
     });
 
-    await db.run({
+    await ts.run({
       sql:`
-      CREATE TRIGGER IF NOT EXISTS ${db.synqPrefix}_after_delete_${table.name}
+      CREATE TRIGGER IF NOT EXISTS ${ts.synqPrefix}_after_delete_${table.name}
       AFTER DELETE ON ${table.name}
       FOR EACH ROW
-      WHEN (SELECT meta_value FROM ${db.synqPrefix}_meta WHERE meta_name = 'triggers_on')='1'
+      WHEN (SELECT meta_value FROM ${ts.synqPrefix}_meta WHERE meta_name = 'triggers_on')='1'
       BEGIN
-        INSERT INTO ${db.synqPrefix}_changes (table_name, row_id, operation) VALUES ('${table.name}', OLD.${table.id}, 'DELETE');
+        INSERT INTO ${ts.synqPrefix}_changes (table_name, row_id, operation) VALUES ('${table.name}', OLD.${table.id}, 'DELETE');
         
         ${getRecordMetaInsertQuery({table, remove: true})}
+        
+        ${getChangeUpdateQuery({table, remove: true})}
       END;`
     });
 
@@ -145,50 +171,50 @@ const setupDatabase = async (config: TinySynqOptions) => {
      */
 
     // Remove previous versions
-    await db.run({sql: `DROP TRIGGER IF EXISTS ${db.synqPrefix}_dump_after_insert_${table.name}`});
-    await db.run({sql: `DROP TRIGGER IF EXISTS ${db.synqPrefix}_dump_after_update_${table.name}`});
-    await db.run({sql: `DROP TRIGGER IF EXISTS ${db.synqPrefix}_dump_after_delete_${table.name}`});
-    await db.run({sql: `DROP TRIGGER IF EXISTS ${db.synqPrefix}_dump_before_insert_record_meta`});
-    await db.run({sql: `DROP TRIGGER IF EXISTS ${db.synqPrefix}_dump_after_insert_record_meta`});
-    await db.run({sql: `DROP TRIGGER IF EXISTS ${db.synqPrefix}_dump_after_update_record_meta`});
+    await ts.run({sql: `DROP TRIGGER IF EXISTS ${ts.synqPrefix}_dump_after_insert_${table.name}`});
+    await ts.run({sql: `DROP TRIGGER IF EXISTS ${ts.synqPrefix}_dump_after_update_${table.name}`});
+    await ts.run({sql: `DROP TRIGGER IF EXISTS ${ts.synqPrefix}_dump_after_delete_${table.name}`});
+    await ts.run({sql: `DROP TRIGGER IF EXISTS ${ts.synqPrefix}_dump_before_insert_record_meta`});
+    await ts.run({sql: `DROP TRIGGER IF EXISTS ${ts.synqPrefix}_dump_after_insert_record_meta`});
+    await ts.run({sql: `DROP TRIGGER IF EXISTS ${ts.synqPrefix}_dump_after_update_record_meta`});
 
     /**
      * @Debugging Do not remove
      * These triggers allow a rudimentary tracing of DB actions on the synced tables.
      */
-    await db.run({
+    await ts.run({
       sql:`
-      CREATE TRIGGER IF NOT EXISTS ${db.synqPrefix}_dump_after_insert_${table.name}
+      CREATE TRIGGER IF NOT EXISTS ${ts.synqPrefix}_dump_after_insert_${table.name}
       AFTER INSERT ON ${table.name}
       FOR EACH ROW
-      WHEN (SELECT meta_value FROM ${db.synqPrefix}_meta WHERE meta_name = 'debug_on')='1'
+      WHEN (SELECT meta_value FROM ${ts.synqPrefix}_meta WHERE meta_name = 'debug_on')='1'
       BEGIN
-        INSERT INTO ${db.synqPrefix}_dump (table_name, operation, data)
+        INSERT INTO ${ts.synqPrefix}_dump (table_name, operation, data)
         VALUES ('${table.name}', 'INSERT', ${jsonObject.jo});
       END;`
     });
 
-    await db.run({
+    await ts.run({
       sql:`
-      CREATE TRIGGER IF NOT EXISTS ${db.synqPrefix}_dump_after_update_${table.name}
+      CREATE TRIGGER IF NOT EXISTS ${ts.synqPrefix}_dump_after_update_${table.name}
       AFTER UPDATE ON ${table.name}
       FOR EACH ROW
-      WHEN (SELECT meta_value FROM ${db.synqPrefix}_meta WHERE meta_name = 'debug_on')='1'
+      WHEN (SELECT meta_value FROM ${ts.synqPrefix}_meta WHERE meta_name = 'debug_on')='1'
       BEGIN
-        INSERT INTO ${db.synqPrefix}_dump (table_name, operation, data) VALUES ('${table.name}', 'UPDATE', ${jsonObject.jo});
+        INSERT INTO ${ts.synqPrefix}_dump (table_name, operation, data) VALUES ('${table.name}', 'UPDATE', ${jsonObject.jo});
       END;`
     });
 
     const oldJsonObject = jsonObject.jo.replace(/NEW/g, 'OLD');
     
-    await db.run({
+    await ts.run({
       sql:`
-      CREATE TRIGGER IF NOT EXISTS ${db.synqPrefix}_dump_after_delete_${table.name}
+      CREATE TRIGGER IF NOT EXISTS ${ts.synqPrefix}_dump_after_delete_${table.name}
       AFTER DELETE ON ${table.name}
       FOR EACH ROW
-      WHEN (SELECT meta_value FROM ${db.synqPrefix}_meta WHERE meta_name = 'debug_on')='1'
+      WHEN (SELECT meta_value FROM ${ts.synqPrefix}_meta WHERE meta_name = 'debug_on')='1'
       BEGIN
-        INSERT INTO ${db.synqPrefix}_dump (table_name, operation, data) VALUES ('${table.name}', 'DELETE', ${oldJsonObject});
+        INSERT INTO ${ts.synqPrefix}_dump (table_name, operation, data) VALUES ('${table.name}', 'DELETE', ${oldJsonObject});
       END;`
     });
 
@@ -197,38 +223,38 @@ const setupDatabase = async (config: TinySynqOptions) => {
      * These triggers allow comparison record meta before and after insert.
      */
 
-    await db.run({
+    await ts.run({
       sql:`
-      CREATE TRIGGER IF NOT EXISTS ${db.synqPrefix}_dump_before_insert_record_meta
-      BEFORE INSERT ON ${db.synqPrefix}_record_meta
+      CREATE TRIGGER IF NOT EXISTS ${ts.synqPrefix}_dump_before_insert_record_meta
+      BEFORE INSERT ON ${ts.synqPrefix}_record_meta
       FOR EACH ROW
-      WHEN (SELECT meta_value FROM ${db.synqPrefix}_meta WHERE meta_name = 'debug_on')='1'
+      WHEN (SELECT meta_value FROM ${ts.synqPrefix}_meta WHERE meta_name = 'debug_on')='1'
       BEGIN
-        INSERT INTO ${db.synqPrefix}_dump (table_name, operation, data)
+        INSERT INTO ${ts.synqPrefix}_dump (table_name, operation, data)
         VALUES (NEW.table_name, 'BEFORE_INSERT', json_object('table_name', NEW.table_name, 'row_id', NEW.row_id, 'mod', NEW.mod, 'vclock', NEW.vclock));
       END;`
     });
 
-    await db.run({
+    await ts.run({
       sql:`
-      CREATE TRIGGER IF NOT EXISTS ${db.synqPrefix}_dump_after_insert_record_meta
-      AFTER INSERT ON ${db.synqPrefix}_record_meta
+      CREATE TRIGGER IF NOT EXISTS ${ts.synqPrefix}_dump_after_insert_record_meta
+      AFTER INSERT ON ${ts.synqPrefix}_record_meta
       FOR EACH ROW
-      WHEN (SELECT meta_value FROM ${db.synqPrefix}_meta WHERE meta_name = 'debug_on')='1'
+      WHEN (SELECT meta_value FROM ${ts.synqPrefix}_meta WHERE meta_name = 'debug_on')='1'
       BEGIN
-        INSERT INTO ${db.synqPrefix}_dump (table_name, operation, data)
+        INSERT INTO ${ts.synqPrefix}_dump (table_name, operation, data)
         VALUES ('${table.name}', 'AFTER_INSERT', json_object('table_name', NEW.table_name, 'row_id', NEW.row_id, 'mod', NEW.mod, 'vclock', NEW.vclock));
       END;`
     });
 
-    await db.run({
+    await ts.run({
       sql:`
-      CREATE TRIGGER IF NOT EXISTS ${db.synqPrefix}_dump_after_update_record_meta
-      AFTER UPDATE ON ${db.synqPrefix}_record_meta
+      CREATE TRIGGER IF NOT EXISTS ${ts.synqPrefix}_dump_after_update_record_meta
+      AFTER UPDATE ON ${ts.synqPrefix}_record_meta
       FOR EACH ROW
-      WHEN (SELECT meta_value FROM ${db.synqPrefix}_meta WHERE meta_name = 'debug_on')='1'
+      WHEN (SELECT meta_value FROM ${ts.synqPrefix}_meta WHERE meta_name = 'debug_on')='1'
       BEGIN
-        INSERT INTO ${db.synqPrefix}_dump (table_name, operation, data)
+        INSERT INTO ${ts.synqPrefix}_dump (table_name, operation, data)
         VALUES ('${table.name}', 'AFTER_UPDATE', json_object('table_name', NEW.table_name, 'row_id', NEW.row_id, 'mod', NEW.mod, 'vclock', NEW.vclock));
       END;`
     });
@@ -237,45 +263,52 @@ const setupDatabase = async (config: TinySynqOptions) => {
   }
 
   // Create a change-tracking table and index
-  await db.run({
+  await ts.run({
     sql:`
-    CREATE TABLE IF NOT EXISTS ${db.synqPrefix}_changes (
+    CREATE TABLE IF NOT EXISTS ${ts.synqPrefix}_changes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       table_name TEXT NOT NULL,
       row_id TEXT NOT NULL,
       data BLOB,
       operation TEXT NOT NULL, -- 'INSERT', 'UPDATE', 'DELETE'
+      source TEXT,
+      vclock BLOB,
       modified TIMESTAMP DATETIME DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f','NOW'))
     );`
   });
   
-  await db.run({
-    sql:`CREATE INDEX IF NOT EXISTS ${db.synqPrefix}_change_modified_idx ON ${db.synqPrefix}_changes(modified)`
+  await ts.run({
+    sql:`CREATE INDEX IF NOT EXISTS ${ts.synqPrefix}_change_modified_idx ON ${ts.synqPrefix}_changes(modified)`
+  });
+  ts.run({
+    sql:`CREATE INDEX IF NOT EXISTS ${ts.synqPrefix}_change_table_row_idx ON ${ts.synqPrefix}_changes(table_name, row_id)`
   });
 
   // Change *_pending is essentially a clone of *_changes used to hold items that
   // cannot be applied yet because intermediate/preceding changes haven't been received.
-  await db.run({
+  await ts.run({
     sql:`
-    CREATE TABLE IF NOT EXISTS ${db.synqPrefix}_pending (
+    CREATE TABLE IF NOT EXISTS ${ts.synqPrefix}_pending (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       table_name TEXT NOT NULL,
       row_id TEXT NOT NULL,
       data BLOB,
       operation TEXT NOT NULL, -- 'INSERT', 'UPDATE', 'DELETE',
+      source TEXT NOT NULL,
       vclock BLOB NOT NULL,
+      mod INTEGER NOT NULL,
       modified TIMESTAMP DATETIME DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f','NOW'))
     );`
   });
   
-  await db.run({
-    sql:`CREATE INDEX IF NOT EXISTS ${db.synqPrefix}_pending_table_row_idx ON ${db.synqPrefix}_pending(table_name, row_id)`
+  await ts.run({
+    sql:`CREATE INDEX IF NOT EXISTS ${ts.synqPrefix}_pending_table_row_idx ON ${ts.synqPrefix}_pending(table_name, row_id)`
   });
 
   // Create a notice table
-  await db.run({
+  await ts.run({
     sql:`
-    CREATE TABLE IF NOT EXISTS ${db.synqPrefix}_notice (
+    CREATE TABLE IF NOT EXISTS ${ts.synqPrefix}_notice (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       table_name TEXT NOT NULL,
       row_id TEXT NOT NULL,
@@ -286,34 +319,42 @@ const setupDatabase = async (config: TinySynqOptions) => {
   }); 
 
   // Create record meta table and index
-  await db.run({
+  await ts.run({
     sql:`
-    CREATE TABLE IF NOT EXISTS ${db.synqPrefix}_record_meta (
+    CREATE TABLE IF NOT EXISTS ${ts.synqPrefix}_record_meta (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       table_name TEXT NOT NULL,
       row_id TEXT NOT NULL,
       mod INTEGER,
+      source TEXT NOT NULL,
       vclock BLOB,
       modified TIMESTAMP DATETIME DEFAULT(STRFTIME('%Y-%m-%dT%H:%M:%f','NOW'))
     );`
   });
 
-  await db.run({
-    sql:`CREATE UNIQUE INDEX IF NOT EXISTS ${db.synqPrefix}_record_meta_idx ON ${db.synqPrefix}_record_meta(table_name, row_id)`
+  await ts.run({
+    sql:`CREATE UNIQUE INDEX IF NOT EXISTS ${ts.synqPrefix}_record_meta_idx ON ${ts.synqPrefix}_record_meta(table_name, row_id)`
+  });
+  // @TODO: These may actually need to be compound indexes; need to evaluate queries.
+  ts.run({
+    sql:`CREATE INDEX IF NOT EXISTS ${ts.synqPrefix}_record_meta_source_idx ON ${ts.synqPrefix}_record_meta(source)`
+  });
+  ts.run({
+    sql:`CREATE INDEX IF NOT EXISTS ${ts.synqPrefix}_record_meta_modified_idx ON ${ts.synqPrefix}_record_meta(modified)`
   });
 
   // Create meta table
-  await db.run({
+  await ts.run({
     sql:`
-    CREATE TABLE IF NOT EXISTS ${db.synqPrefix}_meta (
+    CREATE TABLE IF NOT EXISTS ${ts.synqPrefix}_meta (
       meta_name TEXT NOT NULL PRIMARY KEY,
       meta_value TEXT NOT NULL
     );
   `});
 
-  await db.run({
+  await ts.run({
     sql: `
-    CREATE TABLE IF NOT EXISTS ${db.synqPrefix}_dump (
+    CREATE TABLE IF NOT EXISTS ${ts.synqPrefix}_dump (
       created TIMESTAMP DATETIME DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f','NOW')), 
       table_name TEXT NOT NULL,
       operation TEXT,
@@ -321,32 +362,32 @@ const setupDatabase = async (config: TinySynqOptions) => {
     );
   `});
 
-  await db.run({
-    sql: `CREATE INDEX IF NOT EXISTS ${db.synqPrefix}_meta_name_idx ON ${db.synqPrefix}_meta(meta_name)`
+  await ts.run({
+    sql: `CREATE INDEX IF NOT EXISTS ${ts.synqPrefix}_meta_name_idx ON ${ts.synqPrefix}_meta(meta_name)`
   });
   
   // Enable debug mode
-  if (debug) await db.enableDebug();
+  if (debug) await ts.enableDebug();
 
   // Set the device ID
-  await db.setDeviceId();
+  await ts.setDeviceId();
 
   // Run pre-initialisation queries
   if (preInit?.length) {
     for (const preInitQuery of preInit) {
       log.debug(`\n@@@ preInit\n${preInitQuery}\n@@@`)
-      await db.run({
+      await ts.run({
         sql: preInitQuery
       });
     }
   }
 
-  log.debug(`@${db.synqPrefix}_meta`, db.runQuery({sql:`SELECT * FROM pragma_table_info('${db.synqPrefix}_meta')`}));
-  log.debug(`@SIMPLE_SELECT`, db.runQuery({sql:`SELECT '@@@ that was easy @@@'`}));
+  log.debug(`@${ts.synqPrefix}_meta`, ts.runQuery({sql:`SELECT * FROM pragma_table_info('${ts.synqPrefix}_meta')`}));
+  log.debug(`@SIMPLE_SELECT`, ts.runQuery({sql:`SELECT '@@@ that was easy @@@'`}));
 
   for (const table of tables) {
     // Check table exists
-    const exists = await db.runQuery<Record<string, any>>({
+    const exists = await ts.runQuery<Record<string, any>>({
       sql: `SELECT * FROM pragma_table_info('${table.name}')`
     });
     log.debug('@exists?', table.name, exists);
@@ -355,19 +396,19 @@ const setupDatabase = async (config: TinySynqOptions) => {
     log.debug('Setting up', table.name, table.id);
 
     await setupTriggersForTable({ table });
-    db.tablesReady();
+    ts.tablesReady();
   }
 
   if (postInit?.length) {
     for (const postInitQuery of postInit) {
       log.debug(`@@@\npostInit\n${postInitQuery}\n@@@`)
-      await db.run({
+      await ts.run({
         sql: postInitQuery
       });
     }
   }
 
-  return db;
+  return ts;
 };
 
-export default setupDatabase;
+export default initTinySynq;
