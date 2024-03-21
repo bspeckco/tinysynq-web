@@ -1,5 +1,5 @@
 import { TinySynq } from "./tinysynq.class.js";
-import { SyncRequestType, SyncResponseType } from "./types.js";
+import { Change, SyncRequestType, SyncResponseType } from "./types.js";
 
 interface TinySynqClientConfig {
   /**
@@ -34,7 +34,7 @@ const defaultConfig = {
   secure: false,
 };
 
-export class TinySynqClient {
+export class TinySynqClient extends EventTarget {
 
   private _config: TinySynqClientConfig;
   private _serverUrl: string;
@@ -54,6 +54,8 @@ export class TinySynqClient {
   }
 
   constructor(config: TinySynqClientConfig) {
+    super();
+    if (!config?.ts) throw new Error('Invalid client configuration');
     this._config = config;
     this._ts = config.ts;
     const finalConfig = {...defaultConfig, ...this._config};
@@ -87,22 +89,50 @@ export class TinySynqClient {
     });
   }
 
-  async sync() {
-    //if (!this.ws)
+  async push() {
+    if (!this.ts) return;
     const changes = await this.ts.getChanges();
-    const payload = {type: SyncRequestType.push, changes, source: this.ts.deviceId};
-    console.log('@sync', payload);
+    if (!changes) return console.log('no changes');
+    const payload = {type: SyncRequestType.push, changes, source: this._ts.deviceId};
+    console.debug('@push', payload);
+    this._ws?.send(JSON.stringify(payload));
+  }
+
+  async pull() {
+    const payload = {type: SyncRequestType.pull, source: this._ts.deviceId};
+    console.debug('@pull', payload);
     this._ws?.send(JSON.stringify(payload));
   }
 
   private async handleMessage(e: any) {
-    console.log('@message', e);
+    console.debug('@message', e);
     const data = JSON.parse(e.data);
-    if (data.type === SyncResponseType.ack) {
-      console.log('Sync successful', data);
+    console.debug('@parsed', data)
+    if (data.type !== SyncResponseType.nack) {
+      if (data.changes) {
+        console.warn('@client processing changes')
+        const changes = data.changes.map((c: Change) => {
+          if (typeof c.vclock === 'string') {
+            c.vclock = JSON.parse(c.vclock);
+          }
+          return c;
+        });
+        console.debug('@client changes', changes)
+        await this.ts.applyChangesToLocalDB({changes});
+        const event = new CustomEvent('changes', {
+          detail: data.changes
+        });
+        console.debug('::: Disptaching event...', event);
+        this.dispatchEvent(event)
+      }
     }
     else {
-      console.log('Sync failed', data);
+      console.error('Sync failed', data);
+      this.dispatchEvent(
+        new CustomEvent('error', {
+          detail: data
+        })
+      );
     }
   }
 }

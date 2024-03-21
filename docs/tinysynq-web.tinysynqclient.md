@@ -7,8 +7,9 @@
 **Signature:**
 
 ```typescript
-export declare class TinySynqClient 
+export declare class TinySynqClient extends EventTarget 
 ```
+**Extends:** EventTarget
 
 ## Constructors
 
@@ -30,5 +31,6 @@ export declare class TinySynqClient
 |  --- | --- | --- |
 |  [connect()](./tinysynq-web.tinysynqclient.connect.md) |  |  |
 |  [isOpenOrConnecting()](./tinysynq-web.tinysynqclient.isopenorconnecting.md) |  |  |
-|  [sync()](./tinysynq-web.tinysynqclient.sync.md) |  |  |
+|  [pull()](./tinysynq-web.tinysynqclient.pull.md) |  |  |
+|  [push()](./tinysynq-web.tinysynqclient.push.md) |  |  |
 

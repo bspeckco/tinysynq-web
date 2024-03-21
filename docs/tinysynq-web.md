@@ -11,6 +11,12 @@
 |  [TinySynq](./tinysynq-web.tinysynq.md) | The main class for managing SQLite3 synchronisation. |
 |  [TinySynqClient](./tinysynq-web.tinysynqclient.md) |  |
 
+## Enumerations
+
+|  Enumeration | Description |
+|  --- | --- |
+|  [LogLevel](./tinysynq-web.loglevel.md) |  |
+
 ## Functions
 
 |  Function | Description |

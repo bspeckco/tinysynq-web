@@ -1,4 +1,5 @@
 /// <reference types="bun-types" />
+/// <reference types="node" />
 
 import { ILogObj } from 'tslog';
 import { ISettingsParam } from 'tslog';
@@ -94,6 +95,16 @@ declare interface LatestChangesWithSince extends BaseLatestChangesOptions {
     since: string;
 }
 
+export declare enum LogLevel {
+    Silly = 0,
+    Trace = 1,
+    Debug = 2,
+    Info = 3,
+    Warn = 4,
+    Error = 5,
+    Fatal = 6
+}
+
 /**
  * Basic query params for methods that read from/write to DB.
  *
@@ -148,7 +159,7 @@ declare interface TableNameRowParams {
  *
  * @public
  */
-export declare class TinySynq {
+export declare class TinySynq extends EventTarget {
     private _db;
     private _dbPath;
     private _deviceId;
@@ -156,7 +167,6 @@ export declare class TinySynq {
     private _synqTables?;
     private _synqBatchSize;
     private _wal;
-    private _server;
     private log;
     /**
      * Basic Helpers.
@@ -471,9 +481,10 @@ export declare class TinySynq {
      */
     getFilteredChanges(opts?: LatestChangesOptions): Promise<any>;
     tablesReady(): Promise<void>;
+    obliterate(): Promise<void>;
 }
 
-export declare class TinySynqClient {
+export declare class TinySynqClient extends EventTarget {
     private _config;
     private _serverUrl;
     private _ts;
@@ -484,7 +495,8 @@ export declare class TinySynqClient {
     constructor(config: TinySynqClientConfig);
     isOpenOrConnecting(): boolean | undefined;
     connect(): Promise<WebSocket>;
-    sync(): Promise<void>;
+    push(): Promise<void>;
+    pull(): Promise<void>;
     private handleMessage;
 }
 

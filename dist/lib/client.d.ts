@@ -1,4 +1,5 @@
 /// <reference types="bun-types" />
+/// <reference types="node" />
 import { TinySynq } from "./tinysynq.class.js";
 interface TinySynqClientConfig {
     /**
@@ -24,7 +25,7 @@ interface TinySynqClientConfig {
      */
     secure?: boolean;
 }
-export declare class TinySynqClient {
+export declare class TinySynqClient extends EventTarget {
     private _config;
     private _serverUrl;
     private _ts;
@@ -35,7 +36,8 @@ export declare class TinySynqClient {
     constructor(config: TinySynqClientConfig);
     isOpenOrConnecting(): boolean | undefined;
     connect(): Promise<WebSocket>;
-    sync(): Promise<void>;
+    push(): Promise<void>;
+    pull(): Promise<void>;
     private handleMessage;
 }
 export {};

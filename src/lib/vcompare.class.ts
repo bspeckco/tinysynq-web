@@ -52,9 +52,10 @@ export class VCompare {
   isOutDated(): boolean {
     // Default localTime to any early date so that 
     // remote always wins when local is empty.
-    const { remoteTime, localTime = new Date('1970-01-01').toISOString() } = this;
+    const { remoteTime, localTime = '1970-01-01' } = this;
+    console.debug('\n\n::: isOutDated() :::', {localTime, remoteTime, local: this.local, remote: this.remote}, '\n\n::: /isOutDated() :::');
     if (!remoteTime || !localTime) throw new Error('Missing modified time');
-    return localTime >= remoteTime;
+    return new Date(localTime) >= new Date(remoteTime);
   }
 
   isOutOfOrder(): boolean {

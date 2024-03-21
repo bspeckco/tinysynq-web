@@ -206,7 +206,7 @@ test.describe('Sync', () => {
             sq, table_name: 'message'
           })
         ).data;
-        sq.log.trace('<<< RETRIEVED RANDOM >>>', { randomMember, randomMessage });
+        sq.log.warn('<<< RETRIEVED RANDOM >>>', { randomMember, randomMessage });
         const fixed = {'message_member_id': randomMember?.member_id }
         const constraints = new Map(Object.entries({
           'message_member_id':'member',
@@ -221,13 +221,6 @@ test.describe('Sync', () => {
           operations: ['UPDATE'],
           target: randomMessage.message_id,
         });
-        sq.log.debug('<<<< PRE APPLY >>>>', {deviceId, randomMember, randomMessage, changes})
-        /**
-         * @TODO (?) I guess I forgot to remove this... (requires a check first)
-         */
-        // if (changes[0].operation === 'INSERT') {
-        //   changes.reverse();
-        // }
         changes[0].vclock[deviceId] = 2; // <- This is what makes it appear out of order
         await sq.applyChangesToLocalDB({ changes });
         const pending = await sq.getPending();

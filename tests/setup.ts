@@ -92,8 +92,8 @@ export const setupDb = async (args: any[]) => {
       preInit,
       logOptions: {
         name: 'test-tinysynq',
-        minLevel: LogLevel['Trace'],
-        type: 'pretty'
+        minLevel: 3,
+        type: 'json'
       }
     } as TinySynqOptions);
     return window['sq']?.deviceId;

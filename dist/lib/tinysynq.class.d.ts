@@ -1,3 +1,5 @@
+/// <reference types="bun-types" />
+/// <reference types="node" />
 import { Change, QueryParams, TinySynqOptions, SyncableTable, TableNameRowParams, LatestChangesOptions } from './types.js';
 /**
  * Basic utilities, mainly date-oriented.
@@ -23,7 +25,7 @@ export type GetTableIdColumnParams = {
  *
  * @public
  */
-export declare class TinySynq {
+export declare class TinySynq extends EventTarget {
     private _db;
     private _dbPath;
     private _deviceId;
@@ -31,7 +33,6 @@ export declare class TinySynq {
     private _synqTables?;
     private _synqBatchSize;
     private _wal;
-    private _server;
     private log;
     /**
      * Basic Helpers.
@@ -346,4 +347,5 @@ export declare class TinySynq {
      */
     getFilteredChanges(opts?: LatestChangesOptions): Promise<any>;
     tablesReady(): Promise<void>;
+    obliterate(): Promise<void>;
 }

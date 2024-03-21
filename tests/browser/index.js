@@ -314,9 +314,7 @@
       )[0] || {vclock: '{}'};
       sq.log.warn('@@@ GENERATE... @@@', {recordMeta})
       const vclock = JSON.parse(recordMeta.vclock); // @TODO: Should be parsed or remain a string?
-      //console.log('BEFORE', vclock)
       vclock[origin] = (vclock[origin] || 0 ) + 1;
-      //console.log('AFTER', {vclock})
       
       const change/*:Change*/ = {
         id: currentId,
@@ -325,7 +323,6 @@
         operation: randOp, //as TinySynqOperation,
         data: JSON.stringify(rowData),
         source: origin,
-        mod: vclock[origin],
         vclock,
         modified: sq.utils.utcNowAsISO8601()
       };

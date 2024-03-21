@@ -92,8 +92,13 @@ const initTinySynq = async (config: TinySynqOptions) => {
         WHERE table_name = '${table.name}'
         AND row_id = ${version}.${table.id}
       ) AS trm
-      WHERE table_name = '${table.name}'
-      AND row_id = ${version}.${table.id};
+      WHERE id IN (
+        SELECT id FROM ${ts.synqPrefix}_changes
+        WHERE table_name = '${table.name}'
+        AND row_id = ${version}.${table.id}
+        ORDER by id desc
+        LIMIT 1
+      );
     `;
     return sql;
   }
@@ -296,7 +301,6 @@ const initTinySynq = async (config: TinySynqOptions) => {
       operation TEXT NOT NULL, -- 'INSERT', 'UPDATE', 'DELETE',
       source TEXT NOT NULL,
       vclock BLOB NOT NULL,
-      mod INTEGER NOT NULL,
       modified TIMESTAMP DATETIME DEFAULT(STRFTIME('%Y-%m-%d %H:%M:%f','NOW'))
     );`
   });

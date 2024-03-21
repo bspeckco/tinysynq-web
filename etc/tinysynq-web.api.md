@@ -5,6 +5,7 @@
 ```ts
 
 /// <reference types="bun-types" />
+/// <reference types="node" />
 
 import { ILogObj } from 'tslog';
 import { ISettingsParam } from 'tslog';
@@ -30,6 +31,24 @@ export type GetTableIdColumnParams = {
 // @public
 export const initTinySynq: (config: TinySynqOptions) => Promise<TinySynq>;
 
+// @public (undocumented)
+export enum LogLevel {
+    // (undocumented)
+    Debug = 2,
+    // (undocumented)
+    Error = 5,
+    // (undocumented)
+    Fatal = 6,
+    // (undocumented)
+    Info = 3,
+    // (undocumented)
+    Silly = 0,
+    // (undocumented)
+    Trace = 1,
+    // (undocumented)
+    Warn = 4
+}
+
 // @public
 export type QueryParams = {
     sql: string;
@@ -48,7 +67,7 @@ export interface SyncableTable {
 }
 
 // @public
-export class TinySynq {
+export class TinySynq extends EventTarget {
     constructor(opts: TinySynqOptions);
     // (undocumented)
     applyChangesToLocalDB({ changes, restore }: {
@@ -95,6 +114,8 @@ export class TinySynq {
     init(): Promise<any>;
     // (undocumented)
     insertRecordMeta({ change, vclock }: any): Promise<any>;
+    // (undocumented)
+    obliterate(): Promise<void>;
     reformatQueryValues({ values, prefix }: {
         values: any;
         prefix?: string;
@@ -119,7 +140,7 @@ export class TinySynq {
 }
 
 // @public (undocumented)
-export class TinySynqClient {
+export class TinySynqClient extends EventTarget {
     // Warning: (ae-forgotten-export) The symbol "TinySynqClientConfig" needs to be exported by the entry point index.d.ts
     constructor(config: TinySynqClientConfig);
     // (undocumented)
@@ -127,9 +148,11 @@ export class TinySynqClient {
     // (undocumented)
     isOpenOrConnecting(): boolean | undefined;
     // (undocumented)
-    get serverUrl(): string;
+    pull(): Promise<void>;
     // (undocumented)
-    sync(): Promise<void>;
+    push(): Promise<void>;
+    // (undocumented)
+    get serverUrl(): string;
     // (undocumented)
     get ts(): TinySynq;
     // (undocumented)

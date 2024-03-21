@@ -9,8 +9,9 @@ The main class for managing SQLite3 synchronisation.
 **Signature:**
 
 ```typescript
-export declare class TinySynq 
+export declare class TinySynq extends EventTarget 
 ```
+**Extends:** EventTarget
 
 ## Remarks
 
@@ -59,6 +60,7 @@ Expects SQLite3 version &gt;<!-- -->=3.45.1
 |  [getTableIdColumn(params)](./tinysynq-web.tinysynq.gettableidcolumn.md) |  | Get the column used as identifier for the [SyncableTable](./tinysynq-web.syncabletable.md)<!-- -->. |
 |  [init()](./tinysynq-web.tinysynq.init.md) |  |  |
 |  [insertRecordMeta({ change, vclock })](./tinysynq-web.tinysynq.insertrecordmeta.md) |  |  |
+|  [obliterate()](./tinysynq-web.tinysynq.obliterate.md) |  |  |
 |  [reformatQueryValues({ values, prefix })](./tinysynq-web.tinysynq.reformatqueryvalues.md) |  | Renames keys of a query's value object to make them compatible with the SQLiteWASM API's bind parameters. |
 |  [rollbackTransaction({ savepoint })](./tinysynq-web.tinysynq.rollbacktransaction.md) |  |  |
 |  [run(params)](./tinysynq-web.tinysynq.run.md) |  | Run an operation against the DB |

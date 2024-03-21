@@ -44,7 +44,7 @@ export type GetTableIdColumnParams = {
  * 
  * @public
  */
-export class TinySynq {
+export class TinySynq extends EventTarget {
   private _db: any;
   private _dbPath: string;
   private _deviceId: string | undefined;
@@ -52,7 +52,6 @@ export class TinySynq {
   private _synqTables?: Record<string, SyncableTable>;
   private _synqBatchSize: number = 20;
   private _wal = true;
-  private _server: any;
   private log: Logger<ILogObj>;
 
   /**
@@ -76,6 +75,7 @@ export class TinySynq {
    * @param opts - Configuration options
    */
   constructor(opts: TinySynqOptions) {
+    super();
     if (!opts.filePath && !opts.sqlite3) {
       throw new Error('No DB filePath or connection provided');
     }
@@ -91,8 +91,8 @@ export class TinySynq {
     this._wal = opts.wal ?? false;
     this.log = new Logger({
       name: 'tinysynq-node',
-      minLevel: LogLevel.Debug,
-      type: 'json',
+      minLevel: opts.logOptions?.minLevel ?? LogLevel.Info,
+      type: opts.logOptions?.type || 'json',
       maskValuesOfKeys: ['password', 'encryption_key'],
       hideLogPositionForProduction: true,
       ...(opts.logOptions || {})
@@ -145,21 +145,18 @@ export class TinySynq {
             filename: `file:${this.dbPath}`
           });
           this.log.info(
-            'OPFS not available, created in-memory database at',
-            res.result.filename, '$1'
+            `OPFS not available, created in-memory database at ${res.result.filename}`
           );
         }
-  
-        if (!res) return reject('Unable to start DB');
 
-        const { dbId } = res;
-        this._deviceId = dbId;
-        this.setDeviceId();
-      
+        if (!res) return reject('Unable to start DB');
+        
+        const { dbId } = res;      
         const conf = await promiser('config-get', {});
         this.log.info('Running SQLite3 version', conf.result.version.libVersion);
-        
         this._db = promiser;
+        this._deviceId = dbId;
+        this.setDeviceId();
     
         // Set WAL mode if necessary
         if (this._wal === true) {
@@ -167,7 +164,24 @@ export class TinySynq {
             sql: `PRAGMA journal_mode=WAL;`
           });
         }
-        resolve(this);
+        const timeout = 5000; // If it hasn't loaded in 5 seconds, it ain't loadin'.
+        let waited = 0;
+        let increment = 50;
+        const interval = setInterval(() => {
+          waited += increment;
+          if (this.db) {
+            clearInterval(interval);
+            this.dispatchEvent(new CustomEvent('ready'));
+            return resolve(this);
+          }
+
+          if (waited >= timeout && !this._db) {
+            this.log.error('@db', this.db)
+            clearInterval(interval);
+            return reject(`TinySynq failed to load. (waited ${waited}ms`);
+          }
+          this.log.error('::: Impossible. :::');
+        }, increment);
       }
       catch(err: any) {
         if (!(err instanceof Error)) {
@@ -354,6 +368,12 @@ export class TinySynq {
    * @returns Array of records returned from the database
    */
   async runQuery<T = any>(params: QueryParams): Promise<T> {
+    if (!this._db) {
+      const interval = setInterval(async () => {
+        if (!this._db) return;
+        clearInterval(interval);
+      }, 50);
+    }
     const {sql, prefix = ':'} = params;
     const values = this.reformatQueryValues({values: params.values, prefix});
     const quid = Math.ceil(Math.random() * 1000000);
@@ -472,7 +492,6 @@ export class TinySynq {
       ${where}
       ORDER BY c.modified ASC
     `;
-    console.log('@SQL', sql)
     const values = lastLocalSync ? [lastLocalSync] : [];
     this.log.debug(sql, values);
   
@@ -620,7 +639,7 @@ export class TinySynq {
   }
 
   async insertRecordMeta({change, vclock}: any) {
-    this.log.warn('<<< @insertRecordMeta >>>', {change, vclock});
+    this.log.debug('<<< @insertRecordMeta >>>', {change, vclock});
     const { table_name, row_id, source } = change;
     const mod = vclock[this._deviceId!] || 0;
     const values = {
@@ -629,7 +648,7 @@ export class TinySynq {
       mod,
       source,
       vclock: JSON.stringify(vclock),
-      modified: this.utils.utcNowAsISO8601(),
+      modified: change.modified,
     };
     return this.runQuery({
       sql: `
@@ -703,7 +722,7 @@ export class TinySynq {
    * @returns boolean 
    */
   private async processConflictedChange<T>({ record, change }: {record: T|any, change: Change}): Promise<boolean> {
-    this.log.warn('@processConflictedChange START', record, change)
+    this.log.debug('@processConflictedChange START', record, change)
     // INSERT won't have a local record so accept the incoming change
     if (change.operation === TinySynqOperation.INSERT) return true;
 
@@ -729,16 +748,19 @@ export class TinySynq {
   private async preProcessChange(
     {change, restore}: PreProcessChangeOptions
   ): Promise<PreProcessChangeResult> {
+    this.log.trace('@preProcess change', change)
     let defaultReason = 'unknown';
     let valid = false;
     let reason = defaultReason;
     const localId = this.deviceId!;
     const { table_name, row_id, vclock: remote = {} } = change;
     const record = await this.getRecord({table_name, row_id});
+    this.log.trace('@preProcess record:', record)
     const meta = await this.getRecordMeta({table_name, row_id});
+    this.log.trace('@preProcess meta:', meta)
     const local = meta?.vclock ? JSON.parse(meta.vclock) : {};
     // If it's an insert, there won't be any meta.
-    const localTime = meta?.modified;
+    const localTime = meta?.modified || '1970-01-01';
     const remoteTime = change?.modified;
 
     let latest: VClock = {};
@@ -898,7 +920,7 @@ export class TinySynq {
           break;
         case 'DELETE':
           const sql = `DELETE FROM ${change.table_name} WHERE ${table.id} = ?`;
-          this.log.warn('>>> DELETE SQL <<<', sql, change.row_id);
+          this.log.debug('>>> DELETE SQL <<<', sql, change.row_id);
           await this.run({sql, values: [change.row_id]});
           break;
       }
@@ -972,5 +994,13 @@ export class TinySynq {
 
   async tablesReady(): Promise<void> {
     await this.enableTriggers();
+  }
+
+  async obliterate(): Promise<void> {
+    return await this.db({
+      type: 'close', 
+      dbId: this.deviceId,
+      args: {unlink: true}
+    });
   }
 }

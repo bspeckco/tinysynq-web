@@ -3,16 +3,17 @@ import { TinySynqClient } from './lib/client.js';
 
 export { TinySynqClient, initTinySynq };
 
-export type { 
+export type {
+  Change,
+  LogLevel,
+  QueryParams,
+  SQLiteWASM,
   SyncableTable,
   TinySynqOptions,
   TinySynqOptionsBase,
-  Change,
-  QueryParams,
-  SQLiteWASM,
 } from './lib/types.js';
 
 export type {
+  GetTableIdColumnParams,
   TinySynq,
-  GetTableIdColumnParams
 } from './lib/tinysynq.class.js';
