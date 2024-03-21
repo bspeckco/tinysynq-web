@@ -652,8 +652,8 @@ export class TinySynq extends EventTarget {
     };
     return this.runQuery({
       sql: `
-      INSERT INTO ${this._synqPrefix}_record_meta (table_name, row_id, source, mod, vclock)
-      VALUES (:table_name, :row_id, :source, :mod, :vclock)
+      INSERT INTO ${this._synqPrefix}_record_meta (table_name, row_id, source, mod, vclock, modified)
+      VALUES (:table_name, :row_id, :source, :mod, :vclock, :modified)
       ON CONFLICT DO UPDATE SET source = :source, mod = :mod, vclock = :vclock, modified = :modified
       RETURNING *
       `,

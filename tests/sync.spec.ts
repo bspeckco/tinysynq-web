@@ -6,6 +6,8 @@ import { closeDb } from './utils';
 import { nanoid } from 'nanoid';
 import { TinySynq } from '../src/lib/tinysynq.class';
 import { TINYSYNQ_ID_SIZE} from '../src/lib/constants';
+import { bulkJournalChanges } from './test-data/journal-bulk.data';
+import { journalCreateTableQueries } from './test-data/journal-table.data';
 
 const log = new Logger({ name: 'TinySynq Testing', minLevel: LogLevel.Debug, type: 'pretty' });
 
@@ -15,7 +17,6 @@ test.describe('Sync', () => {
       test.setTimeout(5000);
   
       await pageInit({page, log});
-      //const sq = getConfiguredDb({useDefault: true});
       const preInit = defaultPreInit;
   
       await page.evaluate(setupDb, [preInit, LogLevel]);
@@ -400,6 +401,25 @@ test.describe('Sync', () => {
       expect(updatedRecord).toMatchObject(randomMessage);
       expect(updatedMeta).toEqual(messageMeta);
       expect(lastSyncBefore).not.toEqual(lastSyncAfter);
+    });
+
+    test('should apply all changes to end up and the correct final state', async ({page}) => {
+      test.setTimeout(5000);
+      const { journals } = await page.evaluate(async ([bulkJournalChanges, journalCreateTableQueries]) => {
+        const sq = window['sq'];
+
+        await sq.applyChangesToLocalDB({changes: bulkJournalChanges});
+
+        const journals = await sq.runQuery({
+          sql: 'SELECT * FROM journal'
+        });
+
+        return { journals };
+      }, [bulkJournalChanges, journalCreateTableQueries]);
+      
+      expect(journals[0].journal_name).toEqual('test-01a');
+      expect(journals[1].journal_name).toEqual('test02');
+      expect(journals[2].journal_name).toEqual('test-3ree');
     });
   });
 });

@@ -1,4 +1,5 @@
 import { TinySynqOptions } from "../src/lib/types";
+import { journalCreateTableQueries } from "./test-data/journal-table.data";
 
 export type TestWindow = Window & {
   tinysynq?: any;
@@ -23,7 +24,8 @@ export const createStatements = [
     message_updated TIMESTAMP,
     message_deleted TIMESTAMP,
     FOREIGN KEY (message_member_id) REFERENCES member (member_id)
-  )`
+  )`,
+  ...journalCreateTableQueries
 ];
 
 export const postCreate = async () => {
@@ -87,7 +89,8 @@ export const setupDb = async (args: any[]) => {
       prefix,
       tables: [
         { name: 'member', id: 'member_id', editable: ['member_name', 'member_status']},
-        { name: 'message', id: 'message_id', editable: ['message_text', 'message_updated']}
+        { name: 'message', id: 'message_id', editable: ['message_text', 'message_updated']},
+        { name: 'journal', id: 'journal_id', editable: ['journal_name']}
       ],
       preInit,
       logOptions: {
@@ -99,7 +102,7 @@ export const setupDb = async (args: any[]) => {
     return window['sq']?.deviceId;
   }
   catch(err) {
-    console.error('\n >>>>> ERR! Unable to complete setup <<<<<\n', err);
+    console.error('\n >>>>> ERR! Unable to complete setup <<<<<\n', err.message);
     return false;
   }
 }
