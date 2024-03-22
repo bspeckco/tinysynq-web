@@ -5,7 +5,7 @@ import { VCompare } from './vcompare.class.js';
 import { nanoid } from 'nanoid';
 
 const log = new Logger({ name: 'tinysynq-web-init', minLevel: LogLevel.Info });
-const strtimeAsISO8601 = `STRFTIME('%Y-%m-%dT%H:%M:%f','NOW')`;
+const strftimeAsISO8601 = `STRFTIME('%Y-%m-%d %H:%M:%f','NOW')`;
 
 type PreProcessChangeOptions = {
   change: Change, restore?: boolean
@@ -15,6 +15,7 @@ type PreProcessChangeResult = {
   valid: boolean;
   reason: string;
   vclock: VClock;
+  meta?: any;
   checks: Record<string, boolean>
 }
 
@@ -22,9 +23,10 @@ type PreProcessChangeResult = {
  * Basic utilities, mainly date-oriented.
  */
 export type Utils = {
-  strtimeAsISO8601: string,
+  strftimeAsISO8601: string,
   nowAsISO8601: string,
-  utcNowAsISO8601: () => string
+  utcNowAsISO8601: () => string,
+  isSafeISO8601: (date: string) => boolean
 }
 
 /**
@@ -62,11 +64,14 @@ export class TinySynq extends EventTarget {
    * @public
    */
   readonly utils: Utils = {
-    strtimeAsISO8601,
-    nowAsISO8601: strtimeAsISO8601,
+    strftimeAsISO8601,
+    nowAsISO8601: strftimeAsISO8601,
     utcNowAsISO8601: (): string => {
-      return new Date().toISOString().replace('Z', '');
-    }
+      return new Date().toISOString().replace(/[TZ]/g, ' ').trim();
+    },
+    isSafeISO8601: (date: string) => {
+      return (/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}(\.\d{1,3})?$/.test(date));
+    },
   }
 
   /**
@@ -639,6 +644,7 @@ export class TinySynq extends EventTarget {
   }
 
   async insertRecordMeta({change, vclock}: any) {
+    if (!this.utils.isSafeISO8601(change.modified)) throw new Error(`Invalid modified data for record meta: ${change.modified}`)
     this.log.debug('<<< @insertRecordMeta >>>', {change, vclock});
     const { table_name, row_id, source } = change;
     const mod = vclock[this._deviceId!] || 0;
@@ -721,12 +727,14 @@ export class TinySynq extends EventTarget {
    * @param opts - Options for processing concurrent change
    * @returns boolean 
    */
-  private async processConflictedChange<T>({ record, change }: {record: T|any, change: Change}): Promise<boolean> {
+  private async processConflictedChange<T>(
+    { record, change, meta: localMeta }: 
+    {record: T|any, meta: any, change: Change}
+  ): Promise<boolean> {
     this.log.debug('@processConflictedChange START', record, change)
     // INSERT won't have a local record so accept the incoming change
     if (change.operation === TinySynqOperation.INSERT) return true;
 
-    const localMeta = await this.getRecordMeta({...change});
     this.log.trace('<<<@ processConflictedChange LLW @>>>', change.id, change.table_name, change.row_id, {record, localMeta, change});
     if (change.modified > localMeta.modified) {
       this.log.debug('<!> INTEGRATING REMOTE', change.id, change.table_name, change.row_id);
@@ -789,7 +797,7 @@ export class TinySynq extends EventTarget {
       await this.processOutOfOrderChange({change});
     }
     else if (conflicted = localV.isConflicted()) {
-      valid = await this.processConflictedChange({record, change});
+      valid = await this.processConflictedChange({record, change, meta});
       if (!valid) {
         reason = 'concurrent writes'; 
       }
@@ -806,7 +814,7 @@ export class TinySynq extends EventTarget {
       latest = localV.merge();
     }
 
-    return { valid, reason, vclock: latest, checks: { stale, displaced, conflicted } };
+    return { valid, reason, vclock: latest, meta, checks: { stale, displaced, conflicted } };
   }
 
   /**
@@ -884,6 +892,12 @@ export class TinySynq extends EventTarget {
     try {
       // Check that the changes can actually be applied
       const changeStatus = await this.preProcessChange({change, restore});
+
+      console.log(
+        '\n\n ::: STATUS :::', 
+        JSON.stringify({changeStatus, change}, null, 2), 
+        '\n\n ::: /STATUS :::'
+      );
       if (!changeStatus?.valid) {
         this.log.warn('>>> Invalid change', changeStatus);
         this.updateLastSync({change});
@@ -968,25 +982,25 @@ export class TinySynq extends EventTarget {
    * @param opts 
    */
   getFilteredChanges(opts?: LatestChangesOptions) {
-    let and: string[] = [];
+    let conditions: string[] = [];
     let values: any = {};
     if (opts?.exclude) {
-      and.push('source != :exclude');
+      conditions.push('source != :exclude');
       values.exclude = opts.exclude;
     }
     if (opts?.checkpoint) {
-      and.push('id > :checkpoint');
+      conditions.push('id > :checkpoint');
       values.checkpoint = opts.checkpoint;
     }
     else if (opts?.since) {
-      and.push('modified > :since');
+      conditions.push('modified > :since');
       values.since = opts.since
     }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const sql = `
     SELECT id, table_name, row_id, data, operation, source, vclock, modified
     FROM ${this.synqPrefix}_changes
-    WHERE 1=1
-    ${and.join(' AND ')}
+    ${where} 
     ORDER BY modified ASC`;
 
     return this.runQuery({sql, values});

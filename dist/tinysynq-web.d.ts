@@ -632,9 +632,10 @@ declare interface TinySynqOptionsWithInstance extends TinySynqOptionsBase {
  * Basic utilities, mainly date-oriented.
  */
 declare type Utils = {
-    strtimeAsISO8601: string;
+    strftimeAsISO8601: string;
     nowAsISO8601: string;
     utcNowAsISO8601: () => string;
+    isSafeISO8601: (date: string) => boolean;
 };
 
 declare type VClock = {

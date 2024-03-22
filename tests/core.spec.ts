@@ -17,8 +17,6 @@ test.describe('TinySynq', () => {
   });
   
   test('loads successfully', async ({page}) => {
-    //test.setTimeout(5000);
-
     await pageInit({page, log});
 
     const preInit = defaultPreInit;
@@ -34,8 +32,6 @@ test.describe('TinySynq', () => {
   });
 
   test('initializer creates necessary tables and triggers', async ({page}) => {
-    //test.setTimeout(5000);
-
     const instanceId = await page.evaluate(setupDb, [[], LogLevel]);
     expect(instanceId).toBeTruthy();
 

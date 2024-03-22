@@ -68,7 +68,29 @@ export const postCreate = async () => {
 
 export const pageInit = async ({page, log}) => {
   page.on('console', (...args) => {
+    //log.info(JSON.stringify(args[0], null, 2));
     log.info(...args);
+    /*
+    try {
+      const data = JSON.parse(args[0]._event.text);
+      console.log("!!!", data._meta.logLevelName)
+      switch(data._meta.logLevelName) {
+        case 'TRACE':
+        case 'DEBUG':
+          log.debug('@@@', ...data); break;
+        case 'WARN':
+          log.warn('@@@', ...data); break;
+        case 'ERROR':
+          log.error('@@@', ...data); break;
+        default:
+          log.info('@default', ...data); break;
+      }
+    }
+    catch(err) {
+      //console.error(err)
+      log.info(args[0]._event.text);
+    }
+    setTimeout(process.exit, 40);*/
   });
   await page.goto('http://localhost:8181');
   await page.waitForFunction(() => !!window['tinysynq']);
@@ -95,7 +117,7 @@ export const setupDb = async (args: any[]) => {
       preInit,
       logOptions: {
         name: 'test-tinysynq',
-        minLevel: 3,
+        minLevel: 2,
         type: 'json'
       }
     } as TinySynqOptions);

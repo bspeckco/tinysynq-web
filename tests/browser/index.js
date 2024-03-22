@@ -28,7 +28,7 @@
     const modified = time - Math.floor(Math.random() * 1000000);
     const date = new Date(modified);
     if (!asString) return date;
-    return date.toISOString().replace('Z', ''); 
+    return date.toISOString().replace(/[TZ]/g, ' ').trim(); 
   }
 
   tst.wait = ({ms = 100}) => {
@@ -213,7 +213,7 @@
     Object.keys(updates).forEach(k => {
       setStatements.push(`${k} = :${k}`);
       if (k === 'modified') {
-        values[k] = updates.modified.toISOString(); 
+        values[k] = updates.modified.toISOString().replace(/[TZ]/g, ' ').trim(); 
       }
       else if (k === 'vclock') {
         values[k] = JSON.stringify(updates.vclock);

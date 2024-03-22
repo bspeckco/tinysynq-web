@@ -63,13 +63,11 @@ test.describe('Sync', () => {
     });
 
     test('should add another participant', async ({page}) => {
-      const localId = await page.evaluate(async () => {
-        return window['sq'].deviceId;
-      });
       const remoteId = nanoid(TINYSYNQ_ID_SIZE);
-      const { changes, newMeta, originalMeta, message } = await page.evaluate(async ([remoteId]) => {
+      const { localId, changes, newMeta, originalMeta, message } = await page.evaluate(async ([remoteId]) => {
         const sq = window['sq'];
         const tst = window['tst'];
+        const localId = sq.deviceId;
         const randomMember = (
           await tst.getRecordOrRandom({
             sq, table_name: 'member'
@@ -111,7 +109,7 @@ test.describe('Sync', () => {
         const newMeta = await sq.getRecordMeta({
           table_name: 'message', row_id: changes[0].row_id
         });
-        return { newMeta, originalMeta, changes, message }
+        return { localId, newMeta, originalMeta, changes, message }
       }, [remoteId]);
 
       log.trace('<<!!! CHANGES !!!>>', {changes, message, originalMeta, newMeta});
@@ -123,7 +121,7 @@ test.describe('Sync', () => {
     test('should increment a local ID in vclock with another participant', async ({page}) => {
       const remoteId = nanoid(TINYSYNQ_ID_SIZE);
       const updatedText = `Updated to ${performance.now()}`;
-      const {localId, finalMeta} = await page.evaluate(async ([remoteId, updatedText]) => {
+      const {localId, meta, finalMeta} = await page.evaluate(async ([remoteId, updatedText]) => {
         const sq = window['sq'];
         const tst = window['tst'];
         const localId = sq.deviceId;
@@ -151,18 +149,14 @@ test.describe('Sync', () => {
           operation: 'UPDATE',
           target: randomMessage.message_id
         });
-        changes[0].modified = new Date().toISOString();
+        changes[0].modified = sq.utils.utcNowAsISO8601();
       
         await sq.applyChangesToLocalDB({ changes });
         
         // Change might not be immediately visible, wait a moment.
         await tst.wait({ms: 100});
         const meta = await sq.getRecordMeta({table_name: 'message', row_id: changes[0].row_id});
-
         const message = await sq.getRecord({
-          table_name: 'message', row_id: changes[0].row_id
-        });
-        const originalMeta = await sq.getRecordMeta({
           table_name: 'message', row_id: changes[0].row_id
         });
         message.message_text = updatedText;
@@ -392,7 +386,6 @@ test.describe('Sync', () => {
         const updatedRecord = await sq.getById(metaParams);
         const updatedMeta = await sq.getRecordMeta(metaParams);
         const lastSyncAfter = await sq.getLastSync();
-
         return {randomMessage, messageMeta, updatedRecord, updatedMeta, lastSyncBefore, lastSyncAfter};
       });
       log.warn({updatedRecord, randomMessage, updatedMeta, messageMeta});
