@@ -138,6 +138,14 @@ export class TinySynq extends EventTarget {
     get synqTables(): Record<string, SyncableTable> | undefined;
     // (undocumented)
     tablesReady(): Promise<void>;
+    // (undocumented)
+    updateLastPush(params: {
+        time: string;
+        id: string;
+    }): Promise<{
+        timeResult: any;
+        idResult: any;
+    }>;
     // Warning: (ae-forgotten-export) The symbol "Utils" needs to be exported by the entry point index.d.ts
     readonly utils: Utils;
     get wal(): boolean;

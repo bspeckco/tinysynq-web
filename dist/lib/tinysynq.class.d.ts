@@ -364,6 +364,13 @@ export declare class TinySynq extends EventTarget {
      * @param opts
      */
     getFilteredChanges(opts?: LatestChangesOptions): Promise<any>;
+    updateLastPush(params: {
+        time: string;
+        id: string;
+    }): Promise<{
+        timeResult: any;
+        idResult: any;
+    }>;
     tablesReady(): Promise<void>;
     obliterate(): Promise<void>;
 }

@@ -69,4 +69,5 @@ Expects SQLite3 version &gt;<!-- -->=3.45.1
 |  [runQuery(params)](./tinysynq-web.tinysynq.runquery.md) |  | Run an operation against the DB |
 |  [setDeviceId()](./tinysynq-web.tinysynq.setdeviceid.md) |  | If not already set, generates and sets deviceId. |
 |  [tablesReady()](./tinysynq-web.tinysynq.tablesready.md) |  |  |
+|  [updateLastPush(params)](./tinysynq-web.tinysynq.updatelastpush.md) |  |  |
 

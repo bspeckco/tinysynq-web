@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import { TinySynq } from "./tinysynq.class.js";
 import { Change, SyncRequestType, SyncResponseType } from "./types.js";
 
@@ -91,10 +92,15 @@ export class TinySynqClient extends EventTarget {
 
   async push() {
     if (!this.ts) return;
-    const changes = await this.ts.getChanges();
+    const lastSync = await this.ts.getLastSync();
+    const changes = await this.ts.getFilteredChanges({since: lastSync});
     if (!changes) return console.log('no changes');
-    const payload = {type: SyncRequestType.push, changes, source: this._ts.deviceId};
-    console.debug('@push', payload);
+    const payload = {
+      type: SyncRequestType.push,
+      changes,
+      source: this._ts.deviceId,
+      requestId: nanoid(16)
+    };
     this._ws?.send(JSON.stringify(payload));
   }
 
@@ -124,6 +130,10 @@ export class TinySynqClient extends EventTarget {
         });
         console.debug('::: Disptaching event...', event);
         this.dispatchEvent(event)
+      }
+      else if (data.lastChangeId) {
+       const result = await this.ts.updateLastPush({time: data.lastChangeTime, id: data.lastChangeId});
+       console.log('Stored last push', result);
       }
     }
     else {

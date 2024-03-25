@@ -477,7 +477,7 @@ export class TinySynq extends EventTarget {
    */
   async getChanges(params?: {lastLocalSync?: string, columns?: string[]}): Promise<Change[]> {
     let lastLocalSync: string = params?.lastLocalSync || await this.getLastSync();
-    let { columns = ['c.*', 'trm.vclock'] } = params || {};
+    let { columns = ['c.*'] } = params || {};
     this.log.debug('@getChanges', lastLocalSync);
   
     let where: string = '';
@@ -491,9 +491,6 @@ export class TinySynq extends EventTarget {
     const sql = `
       SELECT ${columnSelection}
       FROM ${this._synqPrefix}_changes c
-      INNER JOIN ${this._synqPrefix}_record_meta trm
-      ON trm.table_name = c.table_name
-      AND trm.row_id = c.row_id
       ${where}
       ORDER BY c.modified ASC
     `;
@@ -906,14 +903,15 @@ export class TinySynq extends EventTarget {
   }
 
   private async updateLastSync({change}: {change: Change}) {
-    await this.runQuery({
+    const lastSyncTime = await this.runQuery({
       sql: `INSERT OR REPLACE INTO ${this.synqPrefix}_meta (meta_name, meta_value) VALUES(:name, STRFTIME('%Y-%m-%d %H:%M:%f','NOW'))`,
-      values: { name: 'last_local_sync'},
+      values: { name: 'last_local_sync' },
     });
-    await this.runQuery({
+    const lastSyncId = await this.runQuery({
       sql: `INSERT OR REPLACE INTO ${this.synqPrefix}_meta (meta_name, meta_value) VALUES(:name, :value)`,
       values: { name: 'last_sync', value: change.id }
     });
+    return {lastSyncTime, lastSyncId}
   }
 
   private async applyChange({
@@ -978,7 +976,8 @@ export class TinySynq extends EventTarget {
           await this.run({sql, values: [change.row_id]});
           break;
       }
-      await this.updateLastSync({change});
+      const lastSyncResult = await this.updateLastSync({change});
+      console.log({lastSyncResult});
 
       // Insert merged VClock data
       const updatedRecordMeta = await this.insertRecordMeta({change, vclock: changeStatus.vclock});
@@ -1044,6 +1043,39 @@ export class TinySynq extends EventTarget {
     ORDER BY modified ASC`;
 
     return this.runQuery({sql, values});
+  }
+
+  async updateLastPush(params: {time: string; id: string}) {
+    const lastPush = await this.runQuery({
+      sql: `
+      SELECT * FROM ${this._synqPrefix}_meta
+      WHERE meta_name IN ('lastPushTime','lastPushId')
+      ORDER BY meta_name ASC`
+    });
+    if (lastPush[0].meta_value > params.id || lastPush[1].meta_value > params.time) {
+      console.warn('Request lastPush update is older than current values.')
+      console.warn('@Existing meta:', lastPush);
+      console.warn('@Incoming meta:', params);
+    } 
+    const savepoint = await this.beginTransaction();
+    const timeResult = await this.runQuery({
+      sql:`
+      UPDATE ${this._synqPrefix}_meta
+      SET meta_value = :value
+      WHERE meta_name = 'lastPushTime'
+      RETURNING *`,
+      values: {value: params.time}
+    });
+    const idResult = await this.runQuery({
+      sql:`
+      UPDATE ${this._synqPrefix}_meta
+      SET meta_value = :value
+      WHERE meta_name = 'lastPushId'
+      RETURNING *`,
+      values: {value: params.id}
+    });
+    await this.commitTransaction({savepoint});
+    return {timeResult, idResult}
   }
 
   async tablesReady(): Promise<void> {

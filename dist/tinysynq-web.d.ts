@@ -8,15 +8,9 @@ declare interface BaseLatestChangesOptions {
     /**
      * A device ID whose changes should be excluded from retrieval (usually the requester).
      */
-    exclude: string;
-    /**
-     * An ISO8601 date string. Providing this will limit retrieved changes to this date/time onwards.
-     */
-    since: string;
-    /**
-     * A
-     */
-    checkpoint: number;
+    exclude?: string;
+    since?: string;
+    checkpoint?: number;
 }
 
 /**
@@ -497,6 +491,13 @@ export declare class TinySynq extends EventTarget {
      * @param opts
      */
     getFilteredChanges(opts?: LatestChangesOptions): Promise<any>;
+    updateLastPush(params: {
+        time: string;
+        id: string;
+    }): Promise<{
+        timeResult: any;
+        idResult: any;
+    }>;
     tablesReady(): Promise<void>;
     obliterate(): Promise<void>;
 }
