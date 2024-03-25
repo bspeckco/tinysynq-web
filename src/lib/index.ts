@@ -1,6 +1,7 @@
 import { Logger } from "tslog";
 import { TinySynq } from "./tinysynq.class.js";
 import { TinySynqOptions, SyncableTable } from "./types.js";
+import { getUpdateTriggerDiffQuery } from "./trigger.js";
 
 /**
  * Returns a configured instance of TinySynq
@@ -146,8 +147,7 @@ const initTinySynq = async (config: TinySynqOptions) => {
       FOR EACH ROW
       WHEN (SELECT meta_value FROM ${ts.synqPrefix}_meta WHERE meta_name = 'triggers_on')='1'
       BEGIN
-        INSERT INTO ${ts.synqPrefix}_changes (table_name, row_id, operation, data)
-        VALUES ('${table.name}', NEW.${table.id}, 'UPDATE', ${jsonObject.jo});
+        ${await getUpdateTriggerDiffQuery({ts, table})}
 
         ${getRecordMetaInsertQuery({table})}
 

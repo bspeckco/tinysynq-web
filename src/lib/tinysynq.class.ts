@@ -832,12 +832,13 @@ export class TinySynq extends EventTarget {
    */
   createInsertFromObject({data, table_name: table}: { data: Record<string, any>, table_name: string }) {
     const columnsToInsert = Object.keys(data).join(',');
-    const editable = this._synqTables![table].editable || [];
+    //const editable = this._synqTables![table].editable || [];
     const updates = Object.keys(data)
-      .filter(key => editable.includes(key))
+      // @TODO: There's no need to restrict editable fields here, but check again.
+      //.filter(key => editable.includes(key))
       .map(k => `${k} = :${k}`)
       .join(',');    
-    if (!updates) throw new Error('No changes available');
+    if (!updates) throw new Error(`No insertable data: ${JSON.stringify(data)}`);
 
     const insertPlaceholders = Object.keys(data).map(k => `:${k}`).join(',');
     const insertSql = `
@@ -847,6 +848,37 @@ export class TinySynq extends EventTarget {
       RETURNING *;`;
 
     return insertSql;
+  }
+
+  /**
+   * Creates an update query based on the syncable table name and data provided.
+   * 
+   * @remarks
+   * 
+   * This method is specifically for tables that have been registerd as syncable
+   * by passing them in as a {@link SyncableTable} at instantiation.
+   * 
+   * @see {@link SyncableTable} for more information.
+   * 
+   * @param param0 - Parameters from which to create the query.
+   * @returns A SQL query string. 
+   */
+  createUpdateFromObject({data, table_name: table}: { data: Record<string, any>, table_name: string }) {
+    if (!this._synqTables![table]) throw new Error(`Not a synced table for update: ${table}`);
+
+    const idCol = this._synqTables![table].id;
+    const updates = Object.keys(data)
+      .filter(k => k !== idCol)
+      .map(k => `${k} = :${k}`)
+      .join(',');
+    if (!updates) throw new Error(`No updates available: ${JSON.stringify(data)}`);
+  
+    const updateSql = `
+      UPDATE ${table} SET ${updates}
+      WHERE ${idCol} = :${idCol}
+      RETURNING *;`;
+
+    return updateSql;
   }
 
   /**
@@ -905,10 +937,12 @@ export class TinySynq extends EventTarget {
       }
 
       const table = this.synqTables![change.table_name];
+      const idCol = this.getTableIdColumn(change);
       let recordData: any;
       if (change.data) {
         try {
           recordData = JSON.parse(change.data);
+          recordData[idCol] = change.row_id;
         }
         catch(err) {
           this.log.debug(change);
@@ -925,12 +959,18 @@ export class TinySynq extends EventTarget {
       this.log.silly('@applyChange', {change, table, changeStatus});
       switch(change.operation) {
         case 'INSERT':
-        case 'UPDATE':
           const insertSql = this.createInsertFromObject({
             data: recordData,
             table_name: change.table_name
           });
           await this.runQuery({sql: insertSql, values: recordData});
+          break;
+        case 'UPDATE':
+          const updateSql = this.createUpdateFromObject({
+            data: recordData,
+            table_name: change.table_name,
+          });
+          this.run({sql: updateSql, values: recordData});
           break;
         case 'DELETE':
           const sql = `DELETE FROM ${change.table_name} WHERE ${table.id} = ?`;

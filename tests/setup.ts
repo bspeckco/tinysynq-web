@@ -1,5 +1,6 @@
 import { TinySynqOptions } from "../src/lib/types";
 import { journalCreateTableQueries } from "./test-data/journal-table.data";
+import { testCreateTableUser } from "./test-data/trigger.data";
 
 export type TestWindow = Window & {
   tinysynq?: any;
@@ -25,7 +26,8 @@ export const createStatements = [
     message_deleted TIMESTAMP,
     FOREIGN KEY (message_member_id) REFERENCES member (member_id)
   )`,
-  ...journalCreateTableQueries
+  ...journalCreateTableQueries,
+  testCreateTableUser
 ];
 
 export const postCreate = async () => {
@@ -74,6 +76,7 @@ export const pageInit = async ({page, log}) => {
   await page.waitForFunction(() => !!window['tinysynq']);
 }
 
+ // @TODO: Need to rethink how args are passed in here.
 export const setupDb = async (args: any[]) => {
   if (window['sq']) return window['sq'].deviceId;
 
@@ -90,7 +93,8 @@ export const setupDb = async (args: any[]) => {
       tables: [
         { name: 'member', id: 'member_id', editable: ['member_name', 'member_status']},
         { name: 'message', id: 'message_id', editable: ['message_text', 'message_updated']},
-        { name: 'journal', id: 'journal_id', editable: ['journal_name']}
+        { name: 'journal', id: 'journal_id', editable: ['journal_name']},
+        { name: 'user', id: 'user_id', editable: ['user_admin', 'user_internal', 'user_system']},
       ],
       preInit,
       logOptions: {

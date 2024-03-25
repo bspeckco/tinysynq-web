@@ -46,6 +46,7 @@ Expects SQLite3 version &gt;<!-- -->=3.45.1
 |  [clearDebugData()](./tinysynq-web.tinysynq.cleardebugdata.md) |  | Empties the <code>*_dump</code> table. |
 |  [commitTransaction({ savepoint })](./tinysynq-web.tinysynq.committransaction.md) |  |  |
 |  [createInsertFromObject({ data, table\_name: table })](./tinysynq-web.tinysynq.createinsertfromobject.md) |  | Creates an insert query based on the syncable table name and data provided. |
+|  [createUpdateFromObject({ data, table\_name: table })](./tinysynq-web.tinysynq.createupdatefromobject.md) |  | Creates an update query based on the syncable table name and data provided. |
 |  [disableDebug()](./tinysynq-web.tinysynq.disabledebug.md) |  | Writes debug mode value (false) which disables recording of operations on syncable tables. |
 |  [enableDebug()](./tinysynq-web.tinysynq.enabledebug.md) |  | Writes debug mode value (true) which disables recording of operations on syncable tables. |
 |  [getById(params)](./tinysynq-web.tinysynq.getbyid.md) |  | Retrieves a single record by it's ID. |
