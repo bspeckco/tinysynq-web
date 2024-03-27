@@ -2,6 +2,7 @@
   "name": "tinysynq-web",
   "type": "module",
   "source": "src/index.ts",
+  "license":"MIT",
   "exports": {
     "types": "./dist/index.d.ts",
     "import": "./dist/tinysynq.module.js",
