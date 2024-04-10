@@ -414,5 +414,61 @@ test.describe('Sync', () => {
       expect(journals[1].journal_name).toEqual('test02');
       expect(journals[2].journal_name).toEqual('test-3ree');
     });
+
+    test('valid update-after-delete should ressurect the deleted record', async ({page}) => {
+      const deviceId = nanoid(TINYSYNQ_ID_SIZE);
+      const { deletedMessage, resurrected, randomMessage, updatedMessage, generatedChanges } = await page.evaluate(async ([deviceId]) => {
+        const sq = window['sq'];
+        const tst = window['tst'];
+        const table_name = 'message';
+        const randomMessageResult = await tst.getRecordOrRandom({
+          sq, table_name
+        });
+        const randomMessage = randomMessageResult.data;
+        const row_id = randomMessage.message_id;
+    
+        // Delete the item
+        await sq.run({
+          sql: `
+          DELETE FROM message
+          WHERE message_id = :message_id`,
+          values: {message_id: randomMessage.message_id}
+        });
+    
+        // Simulate update on the same record from a different device
+        await tst.wait({ms: 10});
+        const deletedMessage = await sq.getById({table_name, row_id});
+        const updatedMessage = {
+          message_id: randomMessage.message_id,
+          message_text: 'Updated content',
+          message_updated: sq.utils.utcNowAsISO8601()
+        };
+        const incomingChanges = [
+          {
+            id: 42,
+            table_name,
+            row_id,
+            operation: 'UPDATE',
+            data: JSON.stringify(updatedMessage),
+            vclock: {[deviceId]: 1},
+            source: deviceId,
+            modified: sq.utils.utcNowAsISO8601()
+          }
+        ];
+        
+        await sq.applyChangesToLocalDB({changes: incomingChanges});
+        await tst.wait({ms: 10});
+        const resurrected = await sq.getById({table_name, row_id});
+        
+        return { deletedMessage, resurrected, randomMessage, updatedMessage, generatedChanges: incomingChanges };
+      }, [deviceId]);
+      
+      await closeDb(page);
+  
+      expect(deletedMessage).toBeFalsy();
+      expect(resurrected).toBeTruthy();
+      expect(resurrected.message_id).toEqual(randomMessage.message_id);
+      expect(resurrected.message_text).toEqual(updatedMessage.message_text);
+    });
   });
 });

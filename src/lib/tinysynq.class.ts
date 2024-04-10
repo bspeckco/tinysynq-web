@@ -15,8 +15,9 @@ type PreProcessChangeResult = {
   valid: boolean;
   reason: string;
   vclock: VClock;
-  meta?: any;
-  checks: Record<string, boolean>
+  checks: Record<string, boolean>,
+  record: any;
+  meta: any;
 }
 
 /**
@@ -149,7 +150,7 @@ export class TinySynq extends EventTarget {
           res = await promiser('open', {
             filename: `file:${this.dbPath}`
           });
-          this.log.info(
+          this.log.warn(
             `OPFS not available, created in-memory database at ${res.result.filename}`
           );
         }
@@ -699,6 +700,30 @@ export class TinySynq extends EventTarget {
   }
 
   /**
+   * Returns the most recent change for a specific record.
+   * 
+   * @param params 
+   * @returns A single change record, if one exists
+   */
+  async getMostRecentChange(params: {table_name: string, row_id: string, operation?: TinySynqOperation}) {
+    const conditions = [
+      'table_name = :table_name',
+      'row_id = :row_id'
+    ];
+    if (params.operation) {
+      conditions.push('operation = :operation');
+    }
+
+    const sql = `
+    SELECT * FROM ${this._synqPrefix}_changes
+    WHERE ${conditions.join(' AND ')}
+    ORDER BY modified DESC
+    LIMIT 1`;
+    const res = await this.runQuery({sql, values: params});
+    return res[0];
+  }
+
+  /**
    * Creates new pending record to be applied later.
    * 
    * @param opts - Options for processing out-of-order change
@@ -776,8 +801,14 @@ export class TinySynq extends EventTarget {
 
     // If we don't have the record, treat it as new
     if (!restore && !record && change.operation !== TinySynqOperation.INSERT) {
-      reason = 'update before insert';
-      await this.processOutOfOrderChange({change});
+      // But skip potential update-after-delete, which is handled later
+      if (!!meta && change.operation === TinySynqOperation.UPDATE) {
+        this.log.warn('SKIPPED: non-existent record with existing meta', meta);
+      }
+      else {
+        reason = 'update before insert';
+        this.processOutOfOrderChange({change});
+      }
     }
     else if (restore || !record || !local || !local[localId]) {
       latest = change.vclock;
@@ -787,7 +818,7 @@ export class TinySynq extends EventTarget {
       valid = true;
       reason = 'restoration';
       latest = localV.merge();
-      return { valid, reason, vclock: latest, checks: { stale, displaced, conflicted } };
+      return { record, meta, valid, reason, vclock: latest, checks: { stale, displaced, conflicted } };
     }
     else if (displaced = localV.isOutOfOrder()) {  
       reason = 'received out of order';
@@ -811,7 +842,55 @@ export class TinySynq extends EventTarget {
       latest = localV.merge();
     }
 
-    return { valid, reason, vclock: latest, meta, checks: { stale, displaced, conflicted } };
+    return { record, meta, valid, reason, vclock: latest, checks: { stale, displaced, conflicted } };
+  }
+
+  /**
+   * Checks for incoming update on deleted record and attempts to resurrect it.
+   * 
+   * @param params 
+   * @returns Object with `valid` property
+   */
+  private async processUpdateAfterDelete(params: PreProcessChangeResult & { change: Change, restore: boolean | undefined}) {
+    const { restore, record, change, meta } = params;
+    const { table_name, row_id } = change;
+    let valid = true;
+
+    if (!restore && !record && !!meta && change.operation === TinySynqOperation.UPDATE) {
+      // If meta exists but the record doesn't, most likely it's
+      // because the record was deleted. If possible, restore it.
+      const lastChange = await this.getMostRecentChange({
+        table_name,
+        row_id,
+        operation: TinySynqOperation.DELETE
+      });
+
+      if (lastChange) {
+        let recordData: any = {};
+        try {
+           recordData = JSON.parse(lastChange.data);
+        }
+        catch(err) {
+          valid = false;
+          this.log.error(err);
+        }
+
+        if (recordData) {
+          // Restore the record
+          const insertSql = this.createInsertFromObject({
+            data: recordData,
+            table_name: change.table_name
+          });
+          await this.run({sql: insertSql, values: recordData});
+          // @TODO: insert notice that record was resurrected
+        }
+      }
+      else {
+        valid = false;
+      }
+    }
+
+    return {valid};
   }
 
   /**
@@ -932,6 +1011,18 @@ export class TinySynq extends EventTarget {
         this.log.warn('>>> Invalid change', changeStatus);
         this.updateLastSync({change});
         return;
+      }
+
+      // Check for update-after-delete. It's done here so that stale changes are skipped.
+      const uadStatus = await this.processUpdateAfterDelete({
+        ...changeStatus,
+        change,
+        restore
+      });
+      if (!uadStatus.valid) {
+        this.log.warn(changeStatus);
+        this.updateLastSync({change});
+        return; 
       }
 
       const table = this.synqTables![change.table_name];

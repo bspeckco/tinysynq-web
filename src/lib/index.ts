@@ -113,6 +113,8 @@ const initTinySynq = async (config: TinySynqOptions) => {
       SELECT 'json_object(' || GROUP_CONCAT('''' || name || ''', NEW.' || name, ',') || ')' AS jo
       FROM pragma_table_info('${table.name}');`
     }))[0];
+
+    const oldJsonObject = jsonObject.jo.replace(/NEW/g, 'OLD');
     log.silly('@jsonObject', JSON.stringify(jsonObject, null, 2));
 
     /**
@@ -155,6 +157,14 @@ const initTinySynq = async (config: TinySynqOptions) => {
       END;`
     });
 
+    /*
+    Stores current record as JSON in `data` column as is done for INSERTs.
+    This will act as a "tombstone" record in case of update-after-delete.
+
+    Restoration will involve checking for a DELETE change for the table/row_id
+    and reinserting it if it exists, then applying the incoming update. Finally,
+    a record is added to `*_notice` informing of the resurrection.
+    */
     await ts.run({
       sql:`
       CREATE TRIGGER IF NOT EXISTS ${ts.synqPrefix}_after_delete_${table.name}
@@ -162,7 +172,8 @@ const initTinySynq = async (config: TinySynqOptions) => {
       FOR EACH ROW
       WHEN (SELECT meta_value FROM ${ts.synqPrefix}_meta WHERE meta_name = 'triggers_on')='1'
       BEGIN
-        INSERT INTO ${ts.synqPrefix}_changes (table_name, row_id, operation) VALUES ('${table.name}', OLD.${table.id}, 'DELETE');
+        INSERT INTO ${ts.synqPrefix}_changes (table_name, row_id, operation, data)
+        VALUES ('${table.name}', OLD.${table.id}, 'DELETE', ${oldJsonObject});
         
         ${getRecordMetaInsertQuery({table, remove: true})}
         
@@ -209,9 +220,7 @@ const initTinySynq = async (config: TinySynqOptions) => {
         INSERT INTO ${ts.synqPrefix}_dump (table_name, operation, data) VALUES ('${table.name}', 'UPDATE', ${jsonObject.jo});
       END;`
     });
-
-    const oldJsonObject = jsonObject.jo.replace(/NEW/g, 'OLD');
-    
+ 
     await ts.run({
       sql:`
       CREATE TRIGGER IF NOT EXISTS ${ts.synqPrefix}_dump_after_delete_${table.name}

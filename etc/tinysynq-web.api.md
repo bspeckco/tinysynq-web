@@ -107,6 +107,11 @@ export class TinySynq extends EventTarget {
     // Warning: (ae-forgotten-export) The symbol "LatestChangesOptions" needs to be exported by the entry point index.d.ts
     getFilteredChanges(opts?: LatestChangesOptions): Promise<any>;
     getLastSync(): Promise<string>;
+    getMostRecentChange(params: {
+        table_name: string;
+        row_id: string;
+        operation?: TinySynqOperation;
+    }): Promise<any>;
     getNewId(): string;
     getPending(): Promise<any>;
     getRecordMeta(params: {
