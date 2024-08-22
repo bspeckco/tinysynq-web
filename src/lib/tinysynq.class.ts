@@ -96,7 +96,7 @@ export class TinySynq extends EventTarget {
     this._synqBatchSize = opts.batchSize || this._synqBatchSize;
     this._wal = opts.wal ?? false;
     this.log = new Logger({
-      name: 'tinysynq-node',
+      name: 'tinysynq-web',
       minLevel: opts.logOptions?.minLevel ?? LogLevel.Info,
       type: opts.logOptions?.type || 'json',
       maskValuesOfKeys: ['password', 'encryption_key'],
