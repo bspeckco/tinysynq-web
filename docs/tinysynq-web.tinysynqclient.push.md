@@ -7,9 +7,9 @@
 **Signature:**
 
 ```typescript
-push(): Promise<void>;
+push(): Promise<(ILogObj & import("tslog").ILogObjMeta) | undefined>;
 ```
 **Returns:**
 
-Promise&lt;void&gt;
+Promise&lt;(ILogObj &amp; import("tslog").ILogObjMeta) \| undefined&gt;
 

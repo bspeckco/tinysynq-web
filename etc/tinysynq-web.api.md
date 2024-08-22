@@ -8,6 +8,7 @@
 /// <reference types="node" />
 
 import { ILogObj } from 'tslog';
+import { ILogObjMeta } from 'tslog';
 import { ISettingsParam } from 'tslog';
 
 // @public
@@ -167,7 +168,7 @@ export class TinySynqClient extends EventTarget {
     // (undocumented)
     pull(): Promise<void>;
     // (undocumented)
-    push(): Promise<void>;
+    push(): Promise<(ILogObj & ILogObjMeta) | undefined>;
     // (undocumented)
     get serverUrl(): string;
     // (undocumented)

@@ -1002,11 +1002,11 @@ export class TinySynq extends EventTarget {
       // Check that the changes can actually be applied
       const changeStatus = await this.preProcessChange({change, restore});
 
-      console.log(
+      this.log.debug([
         '\n\n ::: STATUS :::', 
         JSON.stringify({changeStatus, change}, null, 2), 
         '\n\n ::: /STATUS :::'
-      );
+      ]);
       if (!changeStatus?.valid) {
         this.log.warn('>>> Invalid change', changeStatus);
         this.updateLastSync({change});
@@ -1068,7 +1068,7 @@ export class TinySynq extends EventTarget {
           break;
       }
       const lastSyncResult = await this.updateLastSync({change});
-      console.log({lastSyncResult});
+      this.log.info({lastSyncResult});
 
       // Insert merged VClock data
       const updatedRecordMeta = await this.insertRecordMeta({change, vclock: changeStatus.vclock});

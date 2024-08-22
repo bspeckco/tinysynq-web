@@ -2,6 +2,7 @@
 /// <reference types="node" />
 
 import { ILogObj } from 'tslog';
+import { ILogObjMeta } from 'tslog';
 import { ISettingsParam } from 'tslog';
 
 declare interface BaseLatestChangesOptions {
@@ -525,13 +526,14 @@ export declare class TinySynqClient extends EventTarget {
     private _serverUrl;
     private _ts;
     private _ws;
+    private log;
     get serverUrl(): string;
     get ts(): TinySynq;
     get ws(): WebSocket | undefined;
     constructor(config: TinySynqClientConfig);
     isOpenOrConnecting(): boolean | undefined;
     connect(): Promise<WebSocket>;
-    push(): Promise<void>;
+    push(): Promise<(ILogObj & ILogObjMeta) | undefined>;
     pull(): Promise<void>;
     private handleMessage;
 }

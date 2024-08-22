@@ -1,5 +1,6 @@
 /// <reference types="bun-types" />
 /// <reference types="node" />
+import { ILogObj } from "tslog";
 import { TinySynq } from "./tinysynq.class.js";
 interface TinySynqClientConfig {
     /**
@@ -30,13 +31,14 @@ export declare class TinySynqClient extends EventTarget {
     private _serverUrl;
     private _ts;
     private _ws;
+    private log;
     get serverUrl(): string;
     get ts(): TinySynq;
     get ws(): WebSocket | undefined;
     constructor(config: TinySynqClientConfig);
     isOpenOrConnecting(): boolean | undefined;
     connect(): Promise<WebSocket>;
-    push(): Promise<void>;
+    push(): Promise<(ILogObj & import("tslog").ILogObjMeta) | undefined>;
     pull(): Promise<void>;
     private handleMessage;
 }

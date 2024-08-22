@@ -1,4 +1,5 @@
 import { nanoid } from "nanoid";
+import { ILogObj, Logger } from "tslog";
 import { TinySynq } from "./tinysynq.class.js";
 import { Change, SyncRequestType, SyncResponseType } from "./types.js";
 
@@ -41,6 +42,7 @@ export class TinySynqClient extends EventTarget {
   private _serverUrl: string;
   private _ts: TinySynq;
   private _ws: WebSocket | undefined;
+  private log: Logger<ILogObj>;
 
   get serverUrl() {
     return this._serverUrl;
@@ -57,6 +59,7 @@ export class TinySynqClient extends EventTarget {
   constructor(config: TinySynqClientConfig) {
     super();
     if (!config?.ts) throw new Error('Invalid client configuration');
+    this.log = new Logger({name: 'TinySynqClient'});
     this._config = config;
     this._ts = config.ts;
     const finalConfig = {...defaultConfig, ...this._config};
@@ -76,15 +79,15 @@ export class TinySynqClient extends EventTarget {
       }
       this._ws = new WebSocket(this.serverUrl);
       this._ws.addEventListener('open', (e) => {
-        console.log("TinySynq socket ready.", e);
+        this.log.info("TinySynq socket ready.", e);
         resolve(this.ws as WebSocket);
       });
       this._ws.addEventListener('error', (e) => {
-        console.log("TinySynq socket error:", e);
+        this.log.error("TinySynq socket error:", e);
         if (this.isOpenOrConnecting()) reject(e);
       });
       this._ws.addEventListener('close', (e) => {
-        console.log('Closing TinySynq socket...', e);
+        this.log.info('Closing TinySynq socket...', e);
       });
       this._ws.addEventListener('message', this.handleMessage.bind(this));
     });
@@ -94,7 +97,7 @@ export class TinySynqClient extends EventTarget {
     if (!this.ts) return;
     const lastSync = await this.ts.getLastSync();
     const changes = await this.ts.getFilteredChanges({since: lastSync});
-    if (!changes) return console.log('no changes');
+    if (!changes) return this.log.info('no changes');
     const payload = {
       type: SyncRequestType.push,
       changes,
@@ -133,7 +136,7 @@ export class TinySynqClient extends EventTarget {
       }
       else if (data.lastChangeId) {
        const result = await this.ts.updateLastPush({time: data.lastChangeTime, id: data.lastChangeId});
-       console.log('Stored last push', result);
+       this.log.debug('Stored last push', result);
       }
     }
     else {
